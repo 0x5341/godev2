@@ -1,0 +1,4 @@
+{
+  "name": "godev2-docker-engine-image",
+  "image": "alpine:3.19"
+}

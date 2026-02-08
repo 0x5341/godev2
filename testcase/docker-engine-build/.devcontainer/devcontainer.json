@@ -1,0 +1,7 @@
+{
+  "name": "godev2-docker-engine-build",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  }
+}
