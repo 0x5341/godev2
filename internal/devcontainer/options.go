@@ -85,9 +85,21 @@ func WithDetach() StartOption {
 	}
 }
 
+func WithDetachValue(detach bool) StartOption {
+	return func(o *startOptions) {
+		o.Detach = detach
+	}
+}
+
 func WithTTY() StartOption {
 	return func(o *startOptions) {
 		o.TTY = true
+	}
+}
+
+func WithTTYValue(tty bool) StartOption {
+	return func(o *startOptions) {
+		o.TTY = tty
 	}
 }
 
