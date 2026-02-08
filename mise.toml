@@ -1,0 +1,3 @@
+[tools]
+go = "latest"
+"npm:@devcontainers/cli" = "latest"
