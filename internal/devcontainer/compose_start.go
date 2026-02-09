@@ -29,6 +29,9 @@ func startComposeDevcontainer(ctx context.Context, configPath string, cfg *Devco
 	if err != nil {
 		return "", err
 	}
+	if err := runLifecycleCommands(ctx, "initializeCommand", cfg.InitializeCommand, hostLifecycleRunner(workspaceRoot, vars, envMap)); err != nil {
+		return "", err
+	}
 	composeFiles, err := resolveComposeFiles(configPath, cfg)
 	if err != nil {
 		return "", err
@@ -66,6 +69,32 @@ func startComposeDevcontainer(ctx context.Context, configPath string, cfg *Devco
 	containerID, err := composePrimaryContainerID(ctx, workspaceRoot, project.Name, composeFiles, overrideFile, cfg.Service)
 	if err != nil {
 		return "", err
+	}
+	cli, err := newDockerClient()
+	if err != nil {
+		return containerID, err
+	}
+	defer func() {
+		_ = cli.Close()
+	}()
+	lifecycleEnv, err := buildLifecycleEnv(envMap, cfg.RemoteEnv, vars)
+	if err != nil {
+		return containerID, err
+	}
+	remoteUser := cfg.RemoteUser
+	if remoteUser == "" {
+		remoteUser = cfg.ContainerUser
+	}
+	hooks := []lifecycleHook{
+		{Name: "onCreateCommand", Commands: cfg.OnCreateCommand},
+		{Name: "updateContentCommand", Commands: cfg.UpdateContentCommand},
+		{Name: "postCreateCommand", Commands: cfg.PostCreateCommand},
+		{Name: "postStartCommand", Commands: cfg.PostStartCommand},
+		{Name: "postAttachCommand", Commands: cfg.PostAttachCommand},
+	}
+	runner := containerLifecycleRunner(cli, containerID, workspaceFolder, remoteUser, vars, envMap, envMapToSlice(lifecycleEnv))
+	if err := runLifecycleSequence(ctx, hooks, runner); err != nil {
+		return containerID, err
 	}
 	if !options.Detach {
 		if err := waitForContainerExit(ctx, containerID); err != nil {

@@ -5,10 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/moby/moby/client"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
 )
 
 func requireDocker(t *testing.T) *client.Client {
@@ -19,7 +22,7 @@ func requireDocker(t *testing.T) *client.Client {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := cli.Ping(ctx, client.PingOptions{NegotiateAPIVersion: true}); err != nil {
+	if _, err := cli.Ping(ctx); err != nil {
 		_ = cli.Close()
 		t.Skipf("docker daemon unavailable: %v", err)
 	}
@@ -56,7 +59,7 @@ func cleanupContainer(t *testing.T, cli *client.Client, containerID string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if _, err := cli.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{
+	if err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{
 		Force:         true,
 		RemoveVolumes: true,
 	}); err != nil {
@@ -71,7 +74,7 @@ func cleanupImage(t *testing.T, cli *client.Client, imageRef string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if _, err := cli.ImageRemove(ctx, imageRef, client.ImageRemoveOptions{
+	if _, err := cli.ImageRemove(ctx, imageRef, image.RemoveOptions{
 		Force:         true,
 		PruneChildren: true,
 	}); err != nil {
@@ -105,11 +108,11 @@ func TestDockerEngine_StartStopRemove(t *testing.T) {
 		cleanupContainer(t, cli, containerID)
 	})
 
-	inspect, err := cli.ContainerInspect(context.Background(), containerID, client.ContainerInspectOptions{})
+	inspect, err := cli.ContainerInspect(context.Background(), containerID)
 	if err != nil {
 		t.Fatalf("ContainerInspect: %v", err)
 	}
-	if inspect.Container.State == nil || !inspect.Container.State.Running {
+	if inspect.State == nil || !inspect.State.Running {
 		t.Fatalf("container is not running")
 	}
 
@@ -161,5 +164,72 @@ func TestDockerEngine_BuildImageFromDevcontainer(t *testing.T) {
 	}
 	if _, err := cli.ImageInspect(context.Background(), imageRef); err != nil {
 		t.Fatalf("ImageInspect: %v", err)
+	}
+}
+
+func TestDockerEngine_LifecycleCommands(t *testing.T) {
+	cli := requireDocker(t)
+	root := t.TempDir()
+	configDir := filepath.Join(root, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	config := `{
+		"image": "alpine:3.19",
+		"initializeCommand": "echo init > init.log",
+		"onCreateCommand": "echo onCreate >> ${containerWorkspaceFolder}/lifecycle.log",
+		"updateContentCommand": ["/bin/sh", "-c", "echo updateContent >> ${containerWorkspaceFolder}/lifecycle.log"],
+		"postCreateCommand": "echo postCreate >> ${containerWorkspaceFolder}/lifecycle.log",
+		"postStartCommand": "echo postStart >> ${containerWorkspaceFolder}/lifecycle.log",
+		"postAttachCommand": "echo postAttach >> ${containerWorkspaceFolder}/lifecycle.log"
+	}`
+	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	inspectCtx, cancelInspect := context.WithTimeout(context.Background(), 10*time.Second)
+	removeBaseImage := false
+	if _, err := cli.ImageInspect(inspectCtx, "alpine:3.19"); err != nil {
+		removeBaseImage = true
+	}
+	cancelInspect()
+	if removeBaseImage {
+		t.Cleanup(func() {
+			cleanupImage(t, cli, "alpine:3.19")
+		})
+	}
+
+	startCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	containerID, err := StartDevcontainer(startCtx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("StartDevcontainer: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupContainer(t, cli, containerID)
+	})
+
+	initContent, err := os.ReadFile(filepath.Join(root, "init.log"))
+	if err != nil {
+		t.Fatalf("read init.log: %v", err)
+	}
+	if strings.TrimSpace(string(initContent)) != "init" {
+		t.Fatalf("unexpected init.log: %s", initContent)
+	}
+
+	lifecycleContent, err := os.ReadFile(filepath.Join(root, "lifecycle.log"))
+	if err != nil {
+		t.Fatalf("read lifecycle.log: %v", err)
+	}
+	got := strings.Split(strings.TrimSpace(string(lifecycleContent)), "\n")
+	expected := []string{"onCreate", "updateContent", "postCreate", "postStart", "postAttach"}
+	if len(got) != len(expected) {
+		t.Fatalf("unexpected lifecycle order: %#v", got)
+	}
+	for i, value := range expected {
+		if got[i] != value {
+			t.Fatalf("unexpected lifecycle order: %#v", got)
+		}
 	}
 }
