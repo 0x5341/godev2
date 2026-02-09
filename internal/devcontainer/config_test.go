@@ -150,3 +150,67 @@ func TestLoadConfig_ParsesLifecycleCommands(t *testing.T) {
 		t.Fatalf("unexpected postCreateCommand: %#v", cfg.PostCreateCommand)
 	}
 }
+
+func TestLoadConfig_ParsesFeatures(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	config := `{
+		"image": "alpine:3.19",
+		"features": {
+			"ghcr.io/user/repo/go": "1.18",
+			"./localFeature": {
+				"flag": true
+			}
+		},
+		"overrideFeatureInstallOrder": ["ghcr.io/user/repo/go"]
+	}`
+	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Features == nil || len(cfg.Features) != 2 {
+		t.Fatalf("unexpected features: %#v", cfg.Features)
+	}
+	options, ok := cfg.Features["ghcr.io/user/repo/go"]
+	if !ok {
+		t.Fatalf("missing feature entry")
+	}
+	version := options["version"]
+	if version.String == nil || *version.String != "1.18" {
+		t.Fatalf("unexpected version: %#v", version)
+	}
+	if len(cfg.OverrideFeatureInstallOrder) != 1 || cfg.OverrideFeatureInstallOrder[0] != "ghcr.io/user/repo/go" {
+		t.Fatalf("unexpected override order: %#v", cfg.OverrideFeatureInstallOrder)
+	}
+}
+
+func TestLoadConfig_RejectsInvalidFeatureOption(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	config := `{
+		"image": "alpine:3.19",
+		"features": {
+			"ghcr.io/user/repo/go": {
+				"flag": 123
+			}
+		}
+	}`
+	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if _, err := LoadConfig(configPath); err == nil {
+		t.Fatalf("expected error for invalid feature option")
+	}
+}

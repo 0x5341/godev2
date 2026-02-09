@@ -44,6 +44,9 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 		return "", err
 	}
 	if isComposeConfig(cfg) {
+		if len(cfg.Features) > 0 {
+			return "", errors.New("features are not supported with docker compose")
+		}
 		return startComposeDevcontainer(ctx, configPath, cfg, options)
 	}
 
@@ -51,8 +54,28 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 	if err != nil {
 		return "", err
 	}
+	features, err := resolveFeatures(ctx, configPath, workspaceRoot, cfg)
+	if err != nil {
+		return "", err
+	}
+	if features != nil {
+		cfg.Privileged = cfg.Privileged || features.Privileged
+		if features.Init != nil {
+			cfg.Init = features.Init
+		}
+		cfg.CapAdd = appendUnique(cfg.CapAdd, features.CapAdd...)
+		cfg.SecurityOpt = appendUnique(cfg.SecurityOpt, features.SecurityOpt...)
+		cfg.Mounts = append(append([]MountSpec{}, features.Mounts...), cfg.Mounts...)
+	}
 
-	envMap, err := mergeEnvMaps(cfg.ContainerEnv, options.Env, vars)
+	baseEnv := cfg.ContainerEnv
+	if features != nil && len(features.ContainerEnv) > 0 {
+		baseEnv, err = mergeEnvMaps(features.ContainerEnv, baseEnv, vars)
+		if err != nil {
+			return "", err
+		}
+	}
+	envMap, err := mergeEnvMaps(baseEnv, options.Env, vars)
 	if err != nil {
 		return "", err
 	}
@@ -71,6 +94,16 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 	imageRef, err := ensureImage(ctx, cli, cfg, configPath, workspaceRoot, vars["devcontainerId"])
 	if err != nil {
 		return "", err
+	}
+	if features != nil {
+		baseUser, err := imageDefaultUser(ctx, cli, imageRef)
+		if err != nil {
+			return "", err
+		}
+		imageRef, err = buildFeaturesImage(ctx, cli, imageRef, baseUser, workspaceRoot, vars["devcontainerId"], cfg, features.Order, vars)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	runArgOptions, err := parseRunArgs(append(cfg.RunArgs, options.RunArgs...))
@@ -183,15 +216,21 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 			remoteUser = cfg.ContainerUser
 		}
 	}
-	hooks := []lifecycleHook{
-		{Name: "onCreateCommand", Commands: cfg.OnCreateCommand},
-		{Name: "updateContentCommand", Commands: cfg.UpdateContentCommand},
-		{Name: "postCreateCommand", Commands: cfg.PostCreateCommand},
-		{Name: "postStartCommand", Commands: cfg.PostStartCommand},
-		{Name: "postAttachCommand", Commands: cfg.PostAttachCommand},
-	}
 	runner := containerLifecycleRunner(cli, created.ID, workspaceFolder, remoteUser, vars, envMap, envMapToSlice(lifecycleEnv))
-	if err := runLifecycleSequence(ctx, hooks, runner); err != nil {
+	if features != nil {
+		rootRunner := containerLifecycleRunner(cli, created.ID, workspaceFolder, "root", vars, envMap, envMapToSlice(lifecycleEnv))
+		if err := runFeatureEntrypoints(ctx, features.Order, vars, rootRunner); err != nil {
+			return created.ID, err
+		}
+	}
+	userHooks := map[string]*LifecycleCommands{
+		"onCreateCommand":      cfg.OnCreateCommand,
+		"updateContentCommand": cfg.UpdateContentCommand,
+		"postCreateCommand":    cfg.PostCreateCommand,
+		"postStartCommand":     cfg.PostStartCommand,
+		"postAttachCommand":    cfg.PostAttachCommand,
+	}
+	if err := runLifecycleWithFeatures(ctx, features, userHooks, runner); err != nil {
 		return created.ID, err
 	}
 
@@ -255,6 +294,10 @@ func BuildImageFromDevcontainer(ctx context.Context, configPath string) (string,
 	if err != nil {
 		return "", err
 	}
+	features, err := resolveFeatures(ctx, configPath, workspaceRoot, cfg)
+	if err != nil {
+		return "", err
+	}
 	cli, err := newDockerClient()
 	if err != nil {
 		return "", err
@@ -262,7 +305,18 @@ func BuildImageFromDevcontainer(ctx context.Context, configPath string) (string,
 	defer func() {
 		_ = cli.Close()
 	}()
-	return buildImage(ctx, cli, cfg, configPath, workspaceRoot, vars["devcontainerId"])
+	imageRef, err := buildImage(ctx, cli, cfg, configPath, workspaceRoot, vars["devcontainerId"])
+	if err != nil {
+		return "", err
+	}
+	if features == nil {
+		return imageRef, nil
+	}
+	baseUser, err := imageDefaultUser(ctx, cli, imageRef)
+	if err != nil {
+		return "", err
+	}
+	return buildFeaturesImage(ctx, cli, imageRef, baseUser, workspaceRoot, vars["devcontainerId"], cfg, features.Order, vars)
 }
 
 func buildMounts(workspaceMount string, configMounts []MountSpec, extraMounts []Mount, vars map[string]string) ([]mount.Mount, error) {
