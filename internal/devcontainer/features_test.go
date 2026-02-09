@@ -2,7 +2,6 @@ package devcontainer
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -80,53 +79,8 @@ func TestOrderFeatures_DependsOnInstallsAfter(t *testing.T) {
 
 func TestResolveFeatures_Local(t *testing.T) {
 	root := t.TempDir()
-	configDir := filepath.Join(root, ".devcontainer")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	configPath := filepath.Join(configDir, "devcontainer.json")
-	config := `{
-		"image": "alpine:3.19",
-		"features": {
-			"./featureA": {}
-		}
-	}`
-	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	featureB := filepath.Join(configDir, "featureB")
-	if err := os.MkdirAll(featureB, 0o755); err != nil {
-		t.Fatalf("mkdir featureB: %v", err)
-	}
-	featureBMeta := `{
-		"id": "featureB",
-		"version": "1.0.0",
-		"name": "Feature B"
-	}`
-	if err := os.WriteFile(filepath.Join(featureB, "devcontainer-feature.json"), []byte(featureBMeta), 0o644); err != nil {
-		t.Fatalf("write featureB meta: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(featureB, "install.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatalf("write featureB install: %v", err)
-	}
-	featureA := filepath.Join(configDir, "featureA")
-	if err := os.MkdirAll(featureA, 0o755); err != nil {
-		t.Fatalf("mkdir featureA: %v", err)
-	}
-	featureAMeta := `{
-		"id": "featureA",
-		"version": "1.0.0",
-		"name": "Feature A",
-		"dependsOn": {
-			"./featureB": {}
-		}
-	}`
-	if err := os.WriteFile(filepath.Join(featureA, "devcontainer-feature.json"), []byte(featureAMeta), 0o644); err != nil {
-		t.Fatalf("write featureA meta: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(featureA, "install.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatalf("write featureA install: %v", err)
-	}
+	copyTestcaseDir(t, root, "features", "deps")
+	configPath := filepath.Join(root, ".devcontainer", "devcontainer.json")
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {

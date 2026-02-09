@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -74,6 +75,9 @@ func (c *registryClient) fetchOCIFeature(ctx context.Context, registry, reposito
 	repo, err := remote.NewRepository(fmt.Sprintf("%s/%s", registry, repository))
 	if err != nil {
 		return "", "", err
+	}
+	if isLocalRegistry(registry) {
+		repo.PlainHTTP = true
 	}
 	repo.Client = &auth.Client{
 		Client: retry.DefaultClient,
@@ -160,6 +164,15 @@ func isManifestIndex(mediaType string) bool {
 	default:
 		return false
 	}
+}
+
+func isLocalRegistry(registry string) bool {
+	host := registry
+	if parsed, _, err := net.SplitHostPort(registry); err == nil {
+		host = parsed
+	}
+	host = strings.Trim(host, "[]")
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 func loadRegistryAuth(registry string) registryAuth {

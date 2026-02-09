@@ -13,9 +13,7 @@ func TestFindConfigPath(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	expected := filepath.Join(configDir, "devcontainer.json")
-	if err := os.WriteFile(expected, []byte(`{"image":"alpine:3.19"}`), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeTestcaseFile(t, expected, "config", "basic", "devcontainer.json")
 
 	got, err := FindConfigPath(root)
 	if err != nil {
@@ -29,9 +27,7 @@ func TestFindConfigPath(t *testing.T) {
 		t.Fatalf("remove: %v", err)
 	}
 	alt := filepath.Join(root, "devcontainer.json")
-	if err := os.WriteFile(alt, []byte(`{"image":"alpine:3.19"}`), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeTestcaseFile(t, alt, "config", "basic", "devcontainer.json")
 	got, err = FindConfigPath(root)
 	if err != nil {
 		t.Fatalf("FindConfigPath alt: %v", err)
@@ -48,19 +44,7 @@ func TestLoadConfig_ParsesPortsAndMounts(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	config := `{
-		"image": "alpine:3.19",
-		"forwardPorts": [3000, "3001:3002"],
-		"appPort": "4000",
-		"containerEnv": {"FOO": "bar"},
-		"mounts": [
-			"type=bind,source=${localWorkspaceFolder},target=/work",
-			{"type":"volume","source":"data","target":"/data"}
-		]
-	}`
-	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeTestcaseFile(t, configPath, "config", "ports-mounts", "devcontainer.json")
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
@@ -88,15 +72,7 @@ func TestLoadConfig_ParsesComposeFields(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	config := `{
-		"dockerComposeFile": ["compose.yml", "compose.override.yml"],
-		"service": "app",
-		"runServices": ["app", "db"],
-		"workspaceFolder": "/workspace"
-	}`
-	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeTestcaseFile(t, configPath, "config", "compose-fields", "devcontainer.json")
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
@@ -123,18 +99,7 @@ func TestLoadConfig_ParsesLifecycleCommands(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	config := `{
-		"image": "alpine:3.19",
-		"initializeCommand": "echo init",
-		"onCreateCommand": ["echo", "create"],
-		"postCreateCommand": {
-			"alpha": "echo a",
-			"beta": ["echo", "b"]
-		}
-	}`
-	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeTestcaseFile(t, configPath, "config", "lifecycle", "devcontainer.json")
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
@@ -158,19 +123,7 @@ func TestLoadConfig_ParsesFeatures(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	config := `{
-		"image": "alpine:3.19",
-		"features": {
-			"ghcr.io/user/repo/go": "1.18",
-			"./localFeature": {
-				"flag": true
-			}
-		},
-		"overrideFeatureInstallOrder": ["ghcr.io/user/repo/go"]
-	}`
-	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeTestcaseFile(t, configPath, "config", "features", "devcontainer.json")
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
@@ -199,17 +152,7 @@ func TestLoadConfig_RejectsInvalidFeatureOption(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	config := `{
-		"image": "alpine:3.19",
-		"features": {
-			"ghcr.io/user/repo/go": {
-				"flag": 123
-			}
-		}
-	}`
-	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeTestcaseFile(t, configPath, "config", "invalid-feature", "devcontainer.json")
 	if _, err := LoadConfig(configPath); err == nil {
 		t.Fatalf("expected error for invalid feature option")
 	}

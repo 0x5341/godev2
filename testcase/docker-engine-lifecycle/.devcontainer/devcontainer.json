@@ -1,0 +1,9 @@
+{
+  "image": "alpine:3.19",
+  "initializeCommand": "echo init > init.log",
+  "onCreateCommand": "echo onCreate >> ${containerWorkspaceFolder}/lifecycle.log",
+  "updateContentCommand": ["/bin/sh", "-c", "echo updateContent >> ${containerWorkspaceFolder}/lifecycle.log"],
+  "postCreateCommand": "echo postCreate >> ${containerWorkspaceFolder}/lifecycle.log",
+  "postStartCommand": "echo postStart >> ${containerWorkspaceFolder}/lifecycle.log",
+  "postAttachCommand": "echo postAttach >> ${containerWorkspaceFolder}/lifecycle.log"
+}

@@ -13,9 +13,7 @@ func TestResolveWorkspacePaths_Defaults(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	if err := os.WriteFile(configPath, []byte(`{"image":"alpine:3.19"}`), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeTestcaseFile(t, configPath, "config", "basic", "devcontainer.json")
 
 	cfg := &DevcontainerConfig{}
 	workspaceRoot, workspaceFolder, workspaceMount, vars, err := resolveWorkspacePaths(configPath, cfg)
