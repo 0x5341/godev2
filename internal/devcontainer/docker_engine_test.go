@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -163,5 +164,72 @@ func TestDockerEngine_BuildImageFromDevcontainer(t *testing.T) {
 	}
 	if _, err := cli.ImageInspect(context.Background(), imageRef); err != nil {
 		t.Fatalf("ImageInspect: %v", err)
+	}
+}
+
+func TestDockerEngine_LifecycleCommands(t *testing.T) {
+	cli := requireDocker(t)
+	root := t.TempDir()
+	configDir := filepath.Join(root, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	config := `{
+		"image": "alpine:3.19",
+		"initializeCommand": "echo init > init.log",
+		"onCreateCommand": "echo onCreate >> ${containerWorkspaceFolder}/lifecycle.log",
+		"updateContentCommand": ["/bin/sh", "-c", "echo updateContent >> ${containerWorkspaceFolder}/lifecycle.log"],
+		"postCreateCommand": "echo postCreate >> ${containerWorkspaceFolder}/lifecycle.log",
+		"postStartCommand": "echo postStart >> ${containerWorkspaceFolder}/lifecycle.log",
+		"postAttachCommand": "echo postAttach >> ${containerWorkspaceFolder}/lifecycle.log"
+	}`
+	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	inspectCtx, cancelInspect := context.WithTimeout(context.Background(), 10*time.Second)
+	removeBaseImage := false
+	if _, err := cli.ImageInspect(inspectCtx, "alpine:3.19"); err != nil {
+		removeBaseImage = true
+	}
+	cancelInspect()
+	if removeBaseImage {
+		t.Cleanup(func() {
+			cleanupImage(t, cli, "alpine:3.19")
+		})
+	}
+
+	startCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	containerID, err := StartDevcontainer(startCtx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("StartDevcontainer: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupContainer(t, cli, containerID)
+	})
+
+	initContent, err := os.ReadFile(filepath.Join(root, "init.log"))
+	if err != nil {
+		t.Fatalf("read init.log: %v", err)
+	}
+	if strings.TrimSpace(string(initContent)) != "init" {
+		t.Fatalf("unexpected init.log: %s", initContent)
+	}
+
+	lifecycleContent, err := os.ReadFile(filepath.Join(root, "lifecycle.log"))
+	if err != nil {
+		t.Fatalf("read lifecycle.log: %v", err)
+	}
+	got := strings.Split(strings.TrimSpace(string(lifecycleContent)), "\n")
+	expected := []string{"onCreate", "updateContent", "postCreate", "postStart", "postAttach"}
+	if len(got) != len(expected) {
+		t.Fatalf("unexpected lifecycle order: %#v", got)
+	}
+	for i, value := range expected {
+		if got[i] != value {
+			t.Fatalf("unexpected lifecycle order: %#v", got)
+		}
 	}
 }

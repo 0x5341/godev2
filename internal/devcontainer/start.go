@@ -52,6 +52,14 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 		return "", err
 	}
 
+	envMap, err := mergeEnvMaps(cfg.ContainerEnv, options.Env, vars)
+	if err != nil {
+		return "", err
+	}
+	if err := runLifecycleCommands(ctx, "initializeCommand", cfg.InitializeCommand, hostLifecycleRunner(workspaceRoot, vars, envMap)); err != nil {
+		return "", err
+	}
+
 	cli, err := newDockerClient()
 	if err != nil {
 		return "", err
@@ -61,11 +69,6 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 	}()
 
 	imageRef, err := ensureImage(ctx, cli, cfg, configPath, workspaceRoot, vars["devcontainerId"])
-	if err != nil {
-		return "", err
-	}
-
-	envMap, err := mergeEnvMaps(cfg.ContainerEnv, options.Env, vars)
 	if err != nil {
 		return "", err
 	}
@@ -165,6 +168,30 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 	}
 
 	if err := cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+		return created.ID, err
+	}
+
+	lifecycleEnv, err := buildLifecycleEnv(envMap, cfg.RemoteEnv, vars)
+	if err != nil {
+		return created.ID, err
+	}
+	remoteUser := cfg.RemoteUser
+	if remoteUser == "" {
+		if runArgOptions.User != "" {
+			remoteUser = runArgOptions.User
+		} else {
+			remoteUser = cfg.ContainerUser
+		}
+	}
+	hooks := []lifecycleHook{
+		{Name: "onCreateCommand", Commands: cfg.OnCreateCommand},
+		{Name: "updateContentCommand", Commands: cfg.UpdateContentCommand},
+		{Name: "postCreateCommand", Commands: cfg.PostCreateCommand},
+		{Name: "postStartCommand", Commands: cfg.PostStartCommand},
+		{Name: "postAttachCommand", Commands: cfg.PostAttachCommand},
+	}
+	runner := containerLifecycleRunner(cli, created.ID, workspaceFolder, remoteUser, vars, envMap, envMapToSlice(lifecycleEnv))
+	if err := runLifecycleSequence(ctx, hooks, runner); err != nil {
 		return created.ID, err
 	}
 

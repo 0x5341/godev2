@@ -16,7 +16,7 @@
   - 進捗: 起動/primary service 解決/override まで対応済み。Compose V2 のみ、docker compose CLI を使用。compose build/down と E2E クリーンアップ検証は未対応。
   - 受け入れ条件: 単体サービス定義と multi-service compose ファイルの両方で Build→Start→Stop→Remove が動作し、テスト実行後に image/container/volume が残らないことを自動検証できること。
 
-- [ ] ライフサイクルスクリプトの実行
+- [x] ライフサイクルスクリプトの実行
   - 説明: initialize/onCreate/postCreate/postStart/postAttach 等のスクリプトを正しい順序で実行し、失敗時のロールバックやログ収集を行う。
   - 受け入れ条件: 各イベントハンドラが実行されることを示す E2E テストが存在し、失敗時にエラーが適切に返されること。
 

@@ -115,3 +115,38 @@ func TestLoadConfig_ParsesComposeFields(t *testing.T) {
 		t.Fatalf("unexpected workspaceFolder: %q", cfg.WorkspaceFolder)
 	}
 }
+
+func TestLoadConfig_ParsesLifecycleCommands(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	config := `{
+		"image": "alpine:3.19",
+		"initializeCommand": "echo init",
+		"onCreateCommand": ["echo", "create"],
+		"postCreateCommand": {
+			"alpha": "echo a",
+			"beta": ["echo", "b"]
+		}
+	}`
+	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.InitializeCommand == nil || cfg.InitializeCommand.Single == nil || cfg.InitializeCommand.Single.Shell != "echo init" {
+		t.Fatalf("unexpected initializeCommand: %#v", cfg.InitializeCommand)
+	}
+	if cfg.OnCreateCommand == nil || cfg.OnCreateCommand.Single == nil || cfg.OnCreateCommand.Single.Exec[0] != "echo" {
+		t.Fatalf("unexpected onCreateCommand: %#v", cfg.OnCreateCommand)
+	}
+	if cfg.PostCreateCommand == nil || len(cfg.PostCreateCommand.Parallel) != 2 {
+		t.Fatalf("unexpected postCreateCommand: %#v", cfg.PostCreateCommand)
+	}
+}
