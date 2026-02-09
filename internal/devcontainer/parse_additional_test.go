@@ -3,8 +3,8 @@ package devcontainer
 import (
 	"testing"
 
-	"github.com/moby/moby/api/types/mount"
-	"github.com/moby/moby/api/types/network"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/go-connections/nat"
 )
 
 func TestNormalizePortSpec(t *testing.T) {
@@ -35,12 +35,12 @@ func TestParsePortSpecs(t *testing.T) {
 	if len(exposed) != 1 || len(bindings) != 1 {
 		t.Fatalf("unexpected port maps: %#v %#v", exposed, bindings)
 	}
-	var port network.Port
+	var port nat.Port
 	for item := range exposed {
 		port = item
 	}
-	if port.Num() != 3000 || port.Proto() != network.TCP {
-		t.Fatalf("unexpected port: %s", port.String())
+	if port.Port() != "3000" || port.Proto() != "tcp" {
+		t.Fatalf("unexpected port: %s", port)
 	}
 	portBindings := bindings[port]
 	if len(portBindings) != 1 || portBindings[0].HostPort != "3000" {

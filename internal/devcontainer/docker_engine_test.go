@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/moby/moby/client"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
 )
 
 func requireDocker(t *testing.T) *client.Client {
@@ -19,7 +21,7 @@ func requireDocker(t *testing.T) *client.Client {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := cli.Ping(ctx, client.PingOptions{NegotiateAPIVersion: true}); err != nil {
+	if _, err := cli.Ping(ctx); err != nil {
 		_ = cli.Close()
 		t.Skipf("docker daemon unavailable: %v", err)
 	}
@@ -56,7 +58,7 @@ func cleanupContainer(t *testing.T, cli *client.Client, containerID string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if _, err := cli.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{
+	if err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{
 		Force:         true,
 		RemoveVolumes: true,
 	}); err != nil {
@@ -71,7 +73,7 @@ func cleanupImage(t *testing.T, cli *client.Client, imageRef string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if _, err := cli.ImageRemove(ctx, imageRef, client.ImageRemoveOptions{
+	if _, err := cli.ImageRemove(ctx, imageRef, image.RemoveOptions{
 		Force:         true,
 		PruneChildren: true,
 	}); err != nil {
@@ -105,11 +107,11 @@ func TestDockerEngine_StartStopRemove(t *testing.T) {
 		cleanupContainer(t, cli, containerID)
 	})
 
-	inspect, err := cli.ContainerInspect(context.Background(), containerID, client.ContainerInspectOptions{})
+	inspect, err := cli.ContainerInspect(context.Background(), containerID)
 	if err != nil {
 		t.Fatalf("ContainerInspect: %v", err)
 	}
-	if inspect.Container.State == nil || !inspect.Container.State.Running {
+	if inspect.State == nil || !inspect.State.Running {
 		t.Fatalf("container is not running")
 	}
 
