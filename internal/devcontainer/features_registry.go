@@ -17,6 +17,12 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/registry/remote"
+	"oras.land/oras-go/v2/registry/remote/auth"
+	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
 type registryClient struct {
@@ -28,22 +34,6 @@ type registryAuth struct {
 	username      string
 	password      string
 	identityToken string
-}
-
-type ociManifest struct {
-	MediaType   string            `json:"mediaType"`
-	Config      ociDescriptor     `json:"config"`
-	Layers      []ociDescriptor   `json:"layers"`
-	Annotations map[string]string `json:"annotations"`
-	Manifests   []ociDescriptor   `json:"manifests"`
-}
-
-type ociDescriptor struct {
-	MediaType   string            `json:"mediaType"`
-	Digest      string            `json:"digest"`
-	Size        int64             `json:"size"`
-	Platform    map[string]any    `json:"platform"`
-	Annotations map[string]string `json:"annotations"`
 }
 
 func newRegistryClient() *registryClient {
@@ -81,21 +71,49 @@ func (c *registryClient) fetchHTTPFeature(ctx context.Context, url string) (stri
 }
 
 func (c *registryClient) fetchOCIFeature(ctx context.Context, registry, repository, reference string) (string, string, error) {
-	manifest, digest, err := c.fetchManifest(ctx, registry, repository, reference)
+	repo, err := remote.NewRepository(fmt.Sprintf("%s/%s", registry, repository))
 	if err != nil {
 		return "", "", err
 	}
-	if manifest.MediaType == "application/vnd.oci.image.index.v1+json" && len(manifest.Manifests) > 0 {
-		manifest, digest, err = c.fetchManifest(ctx, registry, repository, manifest.Manifests[0].Digest)
+	repo.Client = &auth.Client{
+		Client: retry.DefaultClient,
+		Cache:  auth.NewCache(),
+		Credential: func(ctx context.Context, hostport string) (auth.Credential, error) {
+			return c.orasCredential(hostport), nil
+		},
+	}
+	desc, err := repo.Resolve(ctx, reference)
+	if err != nil {
+		return "", "", err
+	}
+	manifestDesc := desc
+	if isManifestIndex(desc.MediaType) {
+		indexBytes, err := content.FetchAll(ctx, repo, desc)
 		if err != nil {
 			return "", "", err
 		}
+		var index ocispec.Index
+		if err := json.Unmarshal(indexBytes, &index); err != nil {
+			return "", "", err
+		}
+		if len(index.Manifests) == 0 {
+			return "", "", errors.New("OCI manifest index has no manifests")
+		}
+		manifestDesc = index.Manifests[0]
+	}
+	manifestBytes, err := content.FetchAll(ctx, repo, manifestDesc)
+	if err != nil {
+		return "", "", err
+	}
+	var manifest ocispec.Manifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		return "", "", err
 	}
 	layer, err := selectFeatureLayer(manifest.Layers)
 	if err != nil {
 		return "", "", err
 	}
-	blob, err := c.fetchBlob(ctx, registry, repository, layer.Digest)
+	blob, err := content.FetchAll(ctx, repo, layer)
 	if err != nil {
 		return "", "", err
 	}
@@ -103,170 +121,16 @@ func (c *registryClient) fetchOCIFeature(ctx context.Context, registry, reposito
 	if err != nil {
 		return "", "", err
 	}
-	return dir, digest, nil
+	return dir, manifestDesc.Digest.String(), nil
 }
 
-func selectFeatureLayer(layers []ociDescriptor) (ociDescriptor, error) {
+func selectFeatureLayer(layers []ocispec.Descriptor) (ocispec.Descriptor, error) {
 	for _, layer := range layers {
 		if strings.Contains(layer.MediaType, "devcontainers.layer.v1+tar") {
 			return layer, nil
 		}
 	}
-	return ociDescriptor{}, errors.New("feature layer not found in OCI manifest")
-}
-
-func (c *registryClient) fetchManifest(ctx context.Context, registry, repository, reference string) (ociManifest, string, error) {
-	url := fmt.Sprintf("https://%s/v2/%s/manifests/%s", registry, repository, reference)
-	headers := map[string]string{
-		"Accept": strings.Join([]string{
-			"application/vnd.oci.image.index.v1+json",
-			"application/vnd.oci.image.manifest.v1+json",
-			"application/vnd.docker.distribution.manifest.v2+json",
-		}, ", "),
-	}
-	resp, err := c.doRequest(ctx, registry, http.MethodGet, url, headers)
-	if err != nil {
-		return ociManifest{}, "", err
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode != http.StatusOK {
-		return ociManifest{}, "", fmt.Errorf("manifest request failed: %s", resp.Status)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return ociManifest{}, "", err
-	}
-	var manifest ociManifest
-	if err := json.Unmarshal(body, &manifest); err != nil {
-		return ociManifest{}, "", err
-	}
-	digest := resp.Header.Get("Docker-Content-Digest")
-	if digest == "" {
-		sum := sha256.Sum256(body)
-		digest = fmt.Sprintf("sha256:%s", hex.EncodeToString(sum[:]))
-	}
-	return manifest, digest, nil
-}
-
-func (c *registryClient) fetchBlob(ctx context.Context, registry, repository, digest string) ([]byte, error) {
-	url := fmt.Sprintf("https://%s/v2/%s/blobs/%s", registry, repository, digest)
-	resp, err := c.doRequest(ctx, registry, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("blob request failed: %s", resp.Status)
-	}
-	return io.ReadAll(resp.Body)
-}
-
-func (c *registryClient) doRequest(ctx context.Context, registry, method, url string, headers map[string]string) (*http.Response, error) {
-	auth := c.lookupAuth(registry)
-	req, err := http.NewRequestWithContext(ctx, method, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	for key, value := range headers {
-		req.Header.Set(key, value)
-	}
-	if auth.identityToken != "" {
-		req.Header.Set("Authorization", "Bearer "+auth.identityToken)
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusUnauthorized {
-		return resp, nil
-	}
-	challenge := resp.Header.Get("Www-Authenticate")
-	if challenge == "" {
-		return resp, nil
-	}
-	token, err := c.fetchBearerToken(ctx, challenge, auth)
-	if err != nil {
-		return resp, nil
-	}
-	_ = resp.Body.Close()
-	retry, err := http.NewRequestWithContext(ctx, method, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	for key, value := range headers {
-		retry.Header.Set(key, value)
-	}
-	retry.Header.Set("Authorization", "Bearer "+token)
-	return c.httpClient.Do(retry)
-}
-
-func (c *registryClient) fetchBearerToken(ctx context.Context, challenge string, auth registryAuth) (string, error) {
-	if !strings.HasPrefix(challenge, "Bearer ") {
-		return "", errors.New("unsupported auth challenge")
-	}
-	parts := parseAuthHeader(strings.TrimPrefix(challenge, "Bearer "))
-	realm := parts["realm"]
-	if realm == "" {
-		return "", errors.New("auth challenge missing realm")
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, realm, nil)
-	if err != nil {
-		return "", err
-	}
-	query := req.URL.Query()
-	if service := parts["service"]; service != "" {
-		query.Set("service", service)
-	}
-	if scope := parts["scope"]; scope != "" {
-		query.Set("scope", scope)
-	}
-	req.URL.RawQuery = query.Encode()
-	if auth.username != "" || auth.password != "" {
-		req.SetBasicAuth(auth.username, auth.password)
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("auth token request failed: %s", resp.Status)
-	}
-	var payload struct {
-		Token string `json:"token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return "", err
-	}
-	if payload.Token == "" {
-		return "", errors.New("auth token missing")
-	}
-	return payload.Token, nil
-}
-
-func parseAuthHeader(value string) map[string]string {
-	parts := strings.Split(value, ",")
-	result := make(map[string]string, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		kv := strings.SplitN(part, "=", 2)
-		if len(kv) != 2 {
-			continue
-		}
-		key := kv[0]
-		val := strings.Trim(kv[1], "\"")
-		result[key] = val
-	}
-	return result
+	return ocispec.Descriptor{}, errors.New("feature layer not found in OCI manifest")
 }
 
 func (c *registryClient) lookupAuth(registry string) registryAuth {
@@ -276,6 +140,26 @@ func (c *registryClient) lookupAuth(registry string) registryAuth {
 	auth := loadRegistryAuth(registry)
 	c.auth[registry] = auth
 	return auth
+}
+
+func (c *registryClient) orasCredential(hostport string) auth.Credential {
+	authInfo := c.lookupAuth(hostport)
+	if authInfo.identityToken != "" {
+		return auth.Credential{AccessToken: authInfo.identityToken}
+	}
+	if authInfo.username != "" || authInfo.password != "" {
+		return auth.Credential{Username: authInfo.username, Password: authInfo.password}
+	}
+	return auth.EmptyCredential
+}
+
+func isManifestIndex(mediaType string) bool {
+	switch mediaType {
+	case ocispec.MediaTypeImageIndex, "application/vnd.docker.distribution.manifest.list.v2+json":
+		return true
+	default:
+		return false
+	}
 }
 
 func loadRegistryAuth(registry string) registryAuth {
