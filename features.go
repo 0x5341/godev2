@@ -16,11 +16,20 @@ import (
 	"strings"
 )
 
+// FeatureOptionValue represents a feature option value that may be a string or bool.
 type FeatureOptionValue struct {
-	String *string
-	Bool   *bool
+	String *string // String holds the string value when the option is a string.
+	Bool   *bool   // Bool holds the boolean value when the option is a bool.
 }
 
+// UnmarshalJSON loads a JSON string or boolean into FeatureOptionValue.
+// Impact: It rejects null and sets either String or Bool based on the input type.
+// Example:
+//
+//	var v devcontainer.FeatureOptionValue
+//	_ = json.Unmarshal([]byte(`true`), &v)
+//
+// Similar: StringSlice.UnmarshalJSON loads arrays of strings, while FeatureOptionValue holds a single typed value.
 func (v *FeatureOptionValue) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
 		return errors.New("feature option value cannot be null")
@@ -47,6 +56,15 @@ func (v *FeatureOptionValue) UnmarshalJSON(data []byte) error {
 	}
 }
 
+// StringValue converts a FeatureOptionValue to its string representation.
+// Impact: Bool values become "true"/"false", and missing values return an error.
+// Example:
+//
+//	value := true
+//	v := devcontainer.FeatureOptionValue{Bool: &value}
+//	s, err := v.StringValue()
+//
+// Similar: Directly reading String/Bool requires manual type checks; StringValue centralizes the conversion.
 func (v FeatureOptionValue) StringValue() (string, error) {
 	switch {
 	case v.String != nil:
@@ -76,6 +94,14 @@ type FeatureOptions map[string]FeatureOptionValue
 
 type FeatureSet map[string]FeatureOptions
 
+// UnmarshalJSON loads a JSON feature map into FeatureSet.
+// Impact: It rejects empty feature IDs or options and expands "feature": "1.0" into a version option.
+// Example:
+//
+//	var fs devcontainer.FeatureSet
+//	_ = json.Unmarshal([]byte(`{"ghcr.io/devcontainers/features/git":"1.0"}`), &fs)
+//
+// Similar: FeatureOptionValue.UnmarshalJSON parses a single option value, while FeatureSet structures full feature entries.
 func (fs *FeatureSet) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
 		return nil
@@ -135,46 +161,49 @@ func parseFeatureOptions(data []byte) (FeatureOptions, error) {
 	return opts, nil
 }
 
+// FeatureOptionDefinition describes a feature option declared in metadata.
 type FeatureOptionDefinition struct {
-	Type        string             `json:"type"`
-	Default     FeatureOptionValue `json:"default"`
-	Enum        []string           `json:"enum"`
-	Proposals   []string           `json:"proposals"`
-	Description string             `json:"description"`
+	Type        string             `json:"type"`        // Type is the option type, such as string or boolean.
+	Default     FeatureOptionValue `json:"default"`     // Default is the default option value.
+	Enum        []string           `json:"enum"`        // Enum lists allowed values.
+	Proposals   []string           `json:"proposals"`   // Proposals lists suggested values for tooling.
+	Description string             `json:"description"` // Description explains the option meaning.
 }
 
+// FeatureMount describes a mount contributed by a feature.
 type FeatureMount struct {
-	Type   string `json:"type"`
-	Source string `json:"source"`
-	Target string `json:"target"`
+	Type   string `json:"type"`   // Type is the mount type.
+	Source string `json:"source"` // Source is the mount source.
+	Target string `json:"target"` // Target is the mount destination in the container.
 }
 
+// FeatureMetadata represents the devcontainer-feature.json payload.
 type FeatureMetadata struct {
-	ID                   string                             `json:"id"`
-	Version              string                             `json:"version"`
-	Name                 string                             `json:"name"`
-	Description          string                             `json:"description"`
-	DocumentationURL     string                             `json:"documentationURL"`
-	LicenseURL           string                             `json:"licenseURL"`
-	Keywords             []string                           `json:"keywords"`
-	Options              map[string]FeatureOptionDefinition `json:"options"`
-	ContainerEnv         map[string]string                  `json:"containerEnv"`
-	Privileged           bool                               `json:"privileged"`
-	Init                 *bool                              `json:"init"`
-	CapAdd               []string                           `json:"capAdd"`
-	SecurityOpt          []string                           `json:"securityOpt"`
-	Entrypoint           string                             `json:"entrypoint"`
-	Customizations       map[string]any                     `json:"customizations"`
-	DependsOn            FeatureSet                         `json:"dependsOn"`
-	InstallsAfter        []string                           `json:"installsAfter"`
-	LegacyIds            []string                           `json:"legacyIds"`
-	Deprecated           bool                               `json:"deprecated"`
-	Mounts               []FeatureMount                     `json:"mounts"`
-	OnCreateCommand      *LifecycleCommands                 `json:"onCreateCommand"`
-	UpdateContentCommand *LifecycleCommands                 `json:"updateContentCommand"`
-	PostCreateCommand    *LifecycleCommands                 `json:"postCreateCommand"`
-	PostStartCommand     *LifecycleCommands                 `json:"postStartCommand"`
-	PostAttachCommand    *LifecycleCommands                 `json:"postAttachCommand"`
+	ID                   string                             `json:"id"`                   // ID is the canonical feature identifier.
+	Version              string                             `json:"version"`              // Version is the feature version string.
+	Name                 string                             `json:"name"`                 // Name is the human-readable feature name.
+	Description          string                             `json:"description"`          // Description explains the feature behavior.
+	DocumentationURL     string                             `json:"documentationURL"`     // DocumentationURL points to feature docs.
+	LicenseURL           string                             `json:"licenseURL"`           // LicenseURL points to the feature license.
+	Keywords             []string                           `json:"keywords"`             // Keywords lists search keywords.
+	Options              map[string]FeatureOptionDefinition `json:"options"`              // Options declares configurable feature options.
+	ContainerEnv         map[string]string                  `json:"containerEnv"`         // ContainerEnv exports environment variables.
+	Privileged           bool                               `json:"privileged"`           // Privileged requests privileged container mode.
+	Init                 *bool                              `json:"init"`                 // Init controls Docker init usage.
+	CapAdd               []string                           `json:"capAdd"`               // CapAdd adds Linux capabilities.
+	SecurityOpt          []string                           `json:"securityOpt"`          // SecurityOpt supplies security options.
+	Entrypoint           string                             `json:"entrypoint"`           // Entrypoint points to a feature entrypoint script.
+	Customizations       map[string]any                     `json:"customizations"`       // Customizations exposes editor/tooling settings.
+	DependsOn            FeatureSet                         `json:"dependsOn"`            // DependsOn declares dependent features.
+	InstallsAfter        []string                           `json:"installsAfter"`        // InstallsAfter lists features that should be installed first.
+	LegacyIds            []string                           `json:"legacyIds"`            // LegacyIds lists legacy feature identifiers.
+	Deprecated           bool                               `json:"deprecated"`           // Deprecated marks the feature as deprecated.
+	Mounts               []FeatureMount                     `json:"mounts"`               // Mounts declares feature-provided mounts.
+	OnCreateCommand      *LifecycleCommands                 `json:"onCreateCommand"`      // OnCreateCommand runs after container create.
+	UpdateContentCommand *LifecycleCommands                 `json:"updateContentCommand"` // UpdateContentCommand runs after content update.
+	PostCreateCommand    *LifecycleCommands                 `json:"postCreateCommand"`    // PostCreateCommand runs after creation tasks.
+	PostStartCommand     *LifecycleCommands                 `json:"postStartCommand"`     // PostStartCommand runs after container start.
+	PostAttachCommand    *LifecycleCommands                 `json:"postAttachCommand"`    // PostAttachCommand runs after attach.
 }
 
 type FeatureSource string
@@ -185,53 +214,58 @@ const (
 	FeatureSourceLocal FeatureSource = "local"
 )
 
+// FeatureReference describes a parsed feature reference and its source.
 type FeatureReference struct {
-	ID         string
-	Source     FeatureSource
-	Registry   string
-	Repository string
-	Reference  string
-	URL        string
-	LocalPath  string
+	ID         string        // ID is the raw feature identifier string.
+	Source     FeatureSource // Source indicates OCI, HTTP, or local resolution.
+	Registry   string        // Registry is the OCI registry hostname when Source is OCI.
+	Repository string        // Repository is the OCI repository name when Source is OCI.
+	Reference  string        // Reference is the OCI tag or digest.
+	URL        string        // URL is the HTTP URL when Source is HTTP.
+	LocalPath  string        // LocalPath is the path when Source is local.
 }
 
+// ResolvedFeatureOptions holds resolved option values for a feature.
 type ResolvedFeatureOptions struct {
-	Values     map[string]string
-	UserValues map[string]string
+	Values     map[string]string // Values are resolved option values (defaults + overrides).
+	UserValues map[string]string // UserValues are the values explicitly provided by users.
 }
 
+// ResolvedFeature contains metadata and resolved paths for a feature.
 type ResolvedFeature struct {
-	Reference         FeatureReference
-	Metadata          FeatureMetadata
-	FeatureDir        string
-	ImageDir          string
-	Options           ResolvedFeatureOptions
-	DependencyKey     string
-	DependsOnKeys     []string
-	InstallsAfterIDs  []string
-	InstallsAfterKeys []string
-	BaseName          string
-	Tag               string
-	CanonicalName     string
+	Reference         FeatureReference       // Reference is the parsed feature reference.
+	Metadata          FeatureMetadata        // Metadata is the parsed feature metadata file.
+	FeatureDir        string                 // FeatureDir is the resolved feature directory.
+	ImageDir          string                 // ImageDir is the optional image build directory.
+	Options           ResolvedFeatureOptions // Options holds resolved option values.
+	DependencyKey     string                 // DependencyKey is the unique key for dependency resolution.
+	DependsOnKeys     []string               // DependsOnKeys are dependency keys for required features.
+	InstallsAfterIDs  []string               // InstallsAfterIDs are normalized IDs to install after.
+	InstallsAfterKeys []string               // InstallsAfterKeys are resolved keys to install after.
+	BaseName          string                 // BaseName is the normalized feature name.
+	Tag               string                 // Tag is the OCI tag when resolved from OCI.
+	CanonicalName     string                 // CanonicalName is the canonical identifier with digest.
 }
 
+// ResolvedFeatures aggregates resolved features and their merged config.
 type ResolvedFeatures struct {
-	Order        []*ResolvedFeature
-	ContainerEnv map[string]string
-	Mounts       []MountSpec
-	Privileged   bool
-	Init         *bool
-	CapAdd       []string
-	SecurityOpt  []string
+	Order        []*ResolvedFeature // Order is the installation order for features.
+	ContainerEnv map[string]string  // ContainerEnv is the merged container environment.
+	Mounts       []MountSpec        // Mounts are the merged mount specs.
+	Privileged   bool               // Privileged indicates whether privileged mode is required.
+	Init         *bool              // Init reflects merged init settings.
+	CapAdd       []string           // CapAdd is the merged capability list.
+	SecurityOpt  []string           // SecurityOpt is the merged security options list.
 }
 
+// featureResolver tracks state while resolving feature references.
 type featureResolver struct {
-	configDir       string
-	devcontainerDir string
-	resolving       map[string]struct{}
-	resolved        map[string]*ResolvedFeature
-	features        []*ResolvedFeature
-	registry        *registryClient
+	configDir       string                      // configDir is the directory of the devcontainer config.
+	devcontainerDir string                      // devcontainerDir is the workspace .devcontainer directory.
+	resolving       map[string]struct{}         // resolving tracks in-progress dependency keys.
+	resolved        map[string]*ResolvedFeature // resolved caches resolved features by key.
+	features        []*ResolvedFeature          // features is the list of resolved features.
+	registry        *registryClient             // registry provides feature registry access.
 }
 
 func resolveFeatures(ctx context.Context, configPath, workspaceRoot string, cfg *DevcontainerConfig) (*ResolvedFeatures, error) {
@@ -524,13 +558,14 @@ func localFeatureDigest(path string) string {
 	return fmt.Sprintf("sha256:%s", hex.EncodeToString(sum[:]))
 }
 
+// featureConfig aggregates configuration contributed by resolved features.
 type featureConfig struct {
-	containerEnv map[string]string
-	mounts       []MountSpec
-	privileged   bool
-	init         *bool
-	capAdd       []string
-	securityOpt  []string
+	containerEnv map[string]string // containerEnv merges container env variables.
+	mounts       []MountSpec       // mounts merges feature-provided mounts.
+	privileged   bool              // privileged indicates privileged mode is required.
+	init         *bool             // init holds merged init preference.
+	capAdd       []string          // capAdd is the merged capability list.
+	securityOpt  []string          // securityOpt is the merged security options list.
 }
 
 func aggregateFeatureConfig(features []*ResolvedFeature) featureConfig {

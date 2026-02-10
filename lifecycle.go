@@ -17,25 +17,43 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
+// LifecycleCommand represents a lifecycle hook command in shell or exec form.
 type LifecycleCommand struct {
-	Shell string
-	Exec  []string
+	Shell string   // Shell is a shell-form command string.
+	Exec  []string // Exec is an argv-style command array.
 }
 
+// NamedLifecycleCommand associates a command with a stable name.
 type NamedLifecycleCommand struct {
-	Name    string
-	Command LifecycleCommand
+	Name    string           // Name is the identifier for the command entry.
+	Command LifecycleCommand // Command is the lifecycle command payload.
 }
 
+// LifecycleCommands captures single or parallel lifecycle command definitions.
 type LifecycleCommands struct {
-	Single   *LifecycleCommand
-	Parallel []NamedLifecycleCommand
+	Single   *LifecycleCommand       // Single is the single-command form.
+	Parallel []NamedLifecycleCommand // Parallel is the named command set for parallel execution.
 }
 
+// IsZero reports whether LifecycleCommands is unset.
+// Impact: It is a pure check; it returns true when both the single and parallel forms are empty.
+// Example:
+//
+//	if cmds.IsZero() { /* no-op */ }
+//
+// Similar: A nil pointer check only looks at the pointer value, while IsZero also treats empty slices as unset.
 func (c *LifecycleCommands) IsZero() bool {
 	return c == nil || (c.Single == nil && len(c.Parallel) == 0)
 }
 
+// UnmarshalJSON loads JSON string/array/object lifecycle commands into LifecycleCommands.
+// Impact: It rejects empty values and sorts object keys to stabilize parallel execution order.
+// Example:
+//
+//	var c devcontainer.LifecycleCommands
+//	_ = json.Unmarshal([]byte(`{"postCreateCommand":"echo hi"}`), &c)
+//
+// Similar: FeatureSet.UnmarshalJSON parses feature maps, while LifecycleCommands focuses on command shapes.
 func (c *LifecycleCommands) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
 		return nil
@@ -119,9 +137,10 @@ func (c LifecycleCommand) isEmpty() bool {
 	return c.Shell == "" && len(c.Exec) == 0
 }
 
+// lifecycleHook pairs a lifecycle hook name with its command set.
 type lifecycleHook struct {
-	Name     string
-	Commands *LifecycleCommands
+	Name     string             // Name is the lifecycle hook identifier.
+	Commands *LifecycleCommands // Commands holds the commands for the hook.
 }
 
 type lifecycleRunner func(ctx context.Context, name string, command LifecycleCommand) error

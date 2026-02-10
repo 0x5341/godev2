@@ -26,15 +26,17 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
+// registryClient fetches feature artifacts from registries or HTTP sources.
 type registryClient struct {
-	httpClient *http.Client
-	auth       map[string]registryAuth
+	httpClient *http.Client            // httpClient performs HTTP requests.
+	auth       map[string]registryAuth // auth caches registry credentials.
 }
 
+// registryAuth holds credentials for a registry host.
 type registryAuth struct {
-	username      string
-	password      string
-	identityToken string
+	username      string // username is the basic auth username.
+	password      string // password is the basic auth password.
+	identityToken string // identityToken is an OAuth token when present.
 }
 
 func newRegistryClient() *registryClient {

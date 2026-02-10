@@ -39,7 +39,16 @@ func repoRoot(t *testing.T) string {
 		t.Fatal("failed to resolve test file location")
 	}
 	dir := filepath.Dir(file)
-	return filepath.Dir(filepath.Dir(dir))
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("go.mod not found from test location")
+		}
+		dir = parent
+	}
 }
 
 func testcasePath(t *testing.T, parts ...string) string {

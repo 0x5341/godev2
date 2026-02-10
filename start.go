@@ -20,6 +20,13 @@ import (
 	"github.com/docker/go-units"
 )
 
+// StartDevcontainer reads devcontainer.json and performs image preparation and container start.
+// Impact: It pulls/builds images, creates and starts containers, and runs feature and lifecycle commands.
+// Example:
+//
+//	id, err := devcontainer.StartDevcontainer(ctx, devcontainer.WithConfigPath("./.devcontainer/devcontainer.json"))
+//
+// Similar: BuildImageFromDevcontainer only builds images and does not start containers or run lifecycle hooks.
 func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error) {
 	options := defaultStartOptions()
 	for _, opt := range opts {
@@ -248,6 +255,13 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 	return created.ID, nil
 }
 
+// StopDevcontainer stops the specified container.
+// Impact: It sends a stop request to Docker and uses the timeout as the grace period when provided.
+// Example:
+//
+//	err := devcontainer.StopDevcontainer(ctx, containerID, 10*time.Second)
+//
+// Similar: RemoveDevcontainer deletes containers, while WithRemoveOnStop enables auto-removal at start time.
 func StopDevcontainer(ctx context.Context, containerID string, timeout time.Duration) error {
 	cli, err := newDockerClient()
 	if err != nil {
@@ -264,6 +278,13 @@ func StopDevcontainer(ctx context.Context, containerID string, timeout time.Dura
 	return cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeoutSeconds})
 }
 
+// RemoveDevcontainer force-removes the specified container and its volumes.
+// Impact: The container and related volumes are deleted from Docker and cannot be restored.
+// Example:
+//
+//	err := devcontainer.RemoveDevcontainer(ctx, containerID)
+//
+// Similar: WithRemoveOnStop configures auto-removal on start rather than deleting existing containers.
 func RemoveDevcontainer(ctx context.Context, containerID string) error {
 	cli, err := newDockerClient()
 	if err != nil {
@@ -276,6 +297,13 @@ func RemoveDevcontainer(ctx context.Context, containerID string) error {
 	return cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true, RemoveVolumes: true})
 }
 
+// BuildImageFromDevcontainer builds an image from devcontainer.json.
+// Impact: It runs Docker builds and, when features are configured, produces a feature-enhanced image.
+// Example:
+//
+//	imageRef, err := devcontainer.BuildImageFromDevcontainer(ctx, "./.devcontainer/devcontainer.json")
+//
+// Similar: StartDevcontainer builds images and also starts containers and runs lifecycle hooks.
 func BuildImageFromDevcontainer(ctx context.Context, configPath string) (string, error) {
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
