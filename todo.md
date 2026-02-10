@@ -20,7 +20,7 @@
   - 説明: initialize/onCreate/postCreate/postStart/postAttach 等のスクリプトを正しい順序で実行し、失敗時のロールバックやログ収集を行う。
   - 受け入れ条件: 各イベントハンドラが実行されることを示す E2E テストが存在し、失敗時にエラーが適切に返されること。
 
-- [ ] Features の解決とインストール (ORAS 等を経由)
+- [x] Features の解決とインストール (ORAS 等を経由)
   - 説明: containers.dev の feature を ORAS 等で取得し、コンテナ内に適用するロジックを実装する。外部レジストリや認証の扱いも含む。
   - 受け入れ条件: 少なくとも 1 つの feature を ORAS 経由で取得してコンテナに適用できる E2E テストが存在すること。
 
