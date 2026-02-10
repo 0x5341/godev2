@@ -13,6 +13,7 @@ import (
 	"github.com/compose-spec/compose-go/loader"
 	"github.com/compose-spec/compose-go/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,7 +26,18 @@ func startComposeDevcontainer(ctx context.Context, configPath string, cfg *Devco
 	if err != nil {
 		return "", err
 	}
-	envMap, err := mergeEnvMaps(cfg.ContainerEnv, options.Env, vars)
+	features, err := resolveFeatures(ctx, configPath, workspaceRoot, cfg)
+	if err != nil {
+		return "", err
+	}
+	baseEnv := cfg.ContainerEnv
+	if features != nil && len(features.ContainerEnv) > 0 {
+		baseEnv, err = mergeEnvMaps(features.ContainerEnv, baseEnv, vars)
+		if err != nil {
+			return "", err
+		}
+	}
+	envMap, err := mergeEnvMaps(baseEnv, options.Env, vars)
 	if err != nil {
 		return "", err
 	}
@@ -50,7 +62,32 @@ func startComposeDevcontainer(ctx context.Context, configPath string, cfg *Devco
 	if err != nil {
 		return "", err
 	}
-	override, err := buildComposeOverride(cfg, envMap, labels, workspaceFolder, service)
+	cli, err := newDockerClient()
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = cli.Close()
+	}()
+	featureImage := ""
+	if features != nil {
+		baseImage := strings.TrimSpace(service.Image)
+		if baseImage == "" {
+			return "", errors.New("docker compose features require service.image")
+		}
+		if err := pullImage(ctx, cli, baseImage); err != nil {
+			return "", err
+		}
+		baseUser, err := imageDefaultUser(ctx, cli, baseImage)
+		if err != nil {
+			return "", err
+		}
+		featureImage, err = buildFeaturesImage(ctx, cli, baseImage, baseUser, workspaceRoot, vars["devcontainerId"], cfg, features.Order, vars)
+		if err != nil {
+			return "", err
+		}
+	}
+	override, err := buildComposeOverride(cfg, envMap, labels, workspaceFolder, service, features, featureImage)
 	if err != nil {
 		return "", err
 	}
@@ -70,13 +107,6 @@ func startComposeDevcontainer(ctx context.Context, configPath string, cfg *Devco
 	if err != nil {
 		return "", err
 	}
-	cli, err := newDockerClient()
-	if err != nil {
-		return containerID, err
-	}
-	defer func() {
-		_ = cli.Close()
-	}()
 	lifecycleEnv, err := buildLifecycleEnv(envMap, cfg.RemoteEnv, vars)
 	if err != nil {
 		return containerID, err
@@ -85,15 +115,21 @@ func startComposeDevcontainer(ctx context.Context, configPath string, cfg *Devco
 	if remoteUser == "" {
 		remoteUser = cfg.ContainerUser
 	}
-	hooks := []lifecycleHook{
-		{Name: "onCreateCommand", Commands: cfg.OnCreateCommand},
-		{Name: "updateContentCommand", Commands: cfg.UpdateContentCommand},
-		{Name: "postCreateCommand", Commands: cfg.PostCreateCommand},
-		{Name: "postStartCommand", Commands: cfg.PostStartCommand},
-		{Name: "postAttachCommand", Commands: cfg.PostAttachCommand},
-	}
 	runner := containerLifecycleRunner(cli, containerID, workspaceFolder, remoteUser, vars, envMap, envMapToSlice(lifecycleEnv))
-	if err := runLifecycleSequence(ctx, hooks, runner); err != nil {
+	if features != nil {
+		rootRunner := containerLifecycleRunner(cli, containerID, workspaceFolder, "root", vars, envMap, envMapToSlice(lifecycleEnv))
+		if err := runFeatureEntrypoints(ctx, features.Order, vars, rootRunner); err != nil {
+			return containerID, err
+		}
+	}
+	userHooks := map[string]*LifecycleCommands{
+		"onCreateCommand":      cfg.OnCreateCommand,
+		"updateContentCommand": cfg.UpdateContentCommand,
+		"postCreateCommand":    cfg.PostCreateCommand,
+		"postStartCommand":     cfg.PostStartCommand,
+		"postAttachCommand":    cfg.PostAttachCommand,
+	}
+	if err := runLifecycleWithFeatures(ctx, features, userHooks, runner); err != nil {
 		return containerID, err
 	}
 	if !options.Detach {
@@ -153,12 +189,19 @@ func loadComposeProject(ctx context.Context, composeFiles []string, workingDir, 
 	if err != nil {
 		return nil, err
 	}
+	if projectName != "" {
+		env["COMPOSE_PROJECT_NAME"] = projectName
+	}
 	configDetails := types.ConfigDetails{
 		WorkingDir:  workingDir,
 		ConfigFiles: configFiles,
 		Environment: env,
 	}
-	project, err := loader.LoadWithContext(ctx, configDetails)
+	project, err := loader.LoadWithContext(ctx, configDetails, func(options *loader.Options) {
+		if projectName != "" {
+			options.SetProjectName(projectName, true)
+		}
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +218,7 @@ func findComposeService(project *types.Project, serviceName string) (*types.Serv
 	return nil, fmt.Errorf("service %s not found in compose project", serviceName)
 }
 
-func buildComposeOverride(cfg *DevcontainerConfig, envMap map[string]string, labels map[string]string, workspaceFolder string, service *types.ServiceConfig) ([]byte, error) {
+func buildComposeOverride(cfg *DevcontainerConfig, envMap map[string]string, labels map[string]string, workspaceFolder string, service *types.ServiceConfig, features *ResolvedFeatures, featureImage string) ([]byte, error) {
 	serviceOverride := make(map[string]any)
 	if len(envMap) > 0 {
 		serviceOverride["environment"] = envMap
@@ -196,6 +239,36 @@ func buildComposeOverride(cfg *DevcontainerConfig, envMap map[string]string, lab
 	if workspaceFolder != "" && service.WorkingDir == "" {
 		serviceOverride["working_dir"] = workspaceFolder
 	}
+	if featureImage != "" {
+		serviceOverride["image"] = featureImage
+	}
+	if features != nil {
+		if features.Privileged {
+			serviceOverride["privileged"] = true
+		}
+		if features.Init != nil {
+			serviceOverride["init"] = *features.Init
+		}
+		if len(features.CapAdd) > 0 {
+			merged := appendUnique(nil, service.CapAdd...)
+			merged = appendUnique(merged, features.CapAdd...)
+			serviceOverride["cap_add"] = merged
+		}
+		if len(features.SecurityOpt) > 0 {
+			merged := appendUnique(nil, service.SecurityOpt...)
+			merged = appendUnique(merged, features.SecurityOpt...)
+			serviceOverride["security_opt"] = merged
+		}
+		if len(features.Mounts) > 0 {
+			volumes, err := composeVolumeSpecs(features.Mounts)
+			if err != nil {
+				return nil, err
+			}
+			if len(volumes) > 0 {
+				serviceOverride["volumes"] = volumes
+			}
+		}
+	}
 	if len(serviceOverride) == 0 {
 		return nil, nil
 	}
@@ -205,6 +278,50 @@ func buildComposeOverride(cfg *DevcontainerConfig, envMap map[string]string, lab
 		},
 	}
 	return yaml.Marshal(override)
+}
+
+func composeVolumeSpecs(mounts []MountSpec) ([]string, error) {
+	if len(mounts) == 0 {
+		return nil, nil
+	}
+	specs := make([]string, 0, len(mounts))
+	for _, spec := range mounts {
+		parsed, err := mountFromSpec(spec)
+		if err != nil {
+			return nil, err
+		}
+		volumeSpec, err := composeVolumeSpec(parsed)
+		if err != nil {
+			return nil, err
+		}
+		specs = append(specs, volumeSpec)
+	}
+	return specs, nil
+}
+
+func composeVolumeSpec(parsed mount.Mount) (string, error) {
+	if parsed.Target == "" {
+		return "", errors.New("mount target is required")
+	}
+	if parsed.Type == "" {
+		parsed.Type = mount.TypeVolume
+	}
+	switch parsed.Type {
+	case mount.TypeVolume, mount.TypeBind:
+	default:
+		return "", fmt.Errorf("unsupported mount type for compose: %s", parsed.Type)
+	}
+	if parsed.Source == "" {
+		if parsed.ReadOnly {
+			return fmt.Sprintf("%s:ro", parsed.Target), nil
+		}
+		return parsed.Target, nil
+	}
+	spec := fmt.Sprintf("%s:%s", parsed.Source, parsed.Target)
+	if parsed.ReadOnly {
+		spec = fmt.Sprintf("%s:ro", spec)
+	}
+	return spec, nil
 }
 
 func writeComposeOverride(content []byte) (string, error) {

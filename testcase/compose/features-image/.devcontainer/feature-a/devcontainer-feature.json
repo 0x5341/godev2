@@ -1,0 +1,16 @@
+{
+  "id": "feature-a",
+  "version": "1.0.0",
+  "name": "Feature A",
+  "options": {
+    "message": {
+      "type": "string",
+      "default": "default"
+    },
+    "flag": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "postCreateCommand": "echo feature >> /feature.log"
+}

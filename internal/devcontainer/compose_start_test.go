@@ -22,6 +22,12 @@ type composeServiceOverride struct {
 	User        string            `yaml:"user"`
 	Command     []string          `yaml:"command"`
 	WorkingDir  string            `yaml:"working_dir"`
+	Image       string            `yaml:"image"`
+	Volumes     []string          `yaml:"volumes"`
+	Privileged  *bool             `yaml:"privileged"`
+	CapAdd      []string          `yaml:"cap_add"`
+	SecurityOpt []string          `yaml:"security_opt"`
+	Init        *bool             `yaml:"init"`
 }
 
 func TestBuildComposeOverride_PopulatesFields(t *testing.T) {
@@ -35,7 +41,7 @@ func TestBuildComposeOverride_PopulatesFields(t *testing.T) {
 	workspaceFolder := "/workspace"
 	service := &types.ServiceConfig{Name: "app"}
 
-	override, err := buildComposeOverride(cfg, envMap, labels, workspaceFolder, service)
+	override, err := buildComposeOverride(cfg, envMap, labels, workspaceFolder, service, nil, "")
 	if err != nil {
 		t.Fatalf("buildComposeOverride: %v", err)
 	}
@@ -78,7 +84,7 @@ func TestBuildComposeOverride_NoOverrides(t *testing.T) {
 		WorkingDir: "/already-set",
 	}
 
-	override, err := buildComposeOverride(cfg, nil, nil, "/workspace", service)
+	override, err := buildComposeOverride(cfg, nil, nil, "/workspace", service, nil, "")
 	if err != nil {
 		t.Fatalf("buildComposeOverride: %v", err)
 	}
@@ -116,6 +122,65 @@ func TestComposeBaseArgs(t *testing.T) {
 				t.Fatalf("unexpected args: %#v", args)
 			}
 		})
+	}
+}
+
+func TestBuildComposeOverride_Features(t *testing.T) {
+	init := true
+	cfg := &DevcontainerConfig{
+		Service: "app",
+	}
+	envMap := map[string]string{"FOO": "bar"}
+	labels := map[string]string{"devcontainer.config_path": "/path/to/devcontainer.json"}
+	workspaceFolder := "/workspace"
+	service := &types.ServiceConfig{Name: "app"}
+	features := &ResolvedFeatures{
+		Mounts:      []MountSpec{{Type: "volume", Source: "feature-cache", Target: "/cache"}},
+		Privileged:  true,
+		Init:        &init,
+		CapAdd:      []string{"SYS_PTRACE"},
+		SecurityOpt: []string{"label:role:ROLE"},
+	}
+
+	override, err := buildComposeOverride(cfg, envMap, labels, workspaceFolder, service, features, "feature-image:latest")
+	if err != nil {
+		t.Fatalf("buildComposeOverride: %v", err)
+	}
+	if len(override) == 0 {
+		t.Fatal("expected override content")
+	}
+
+	var parsed composeOverride
+	if err := yaml.Unmarshal(override, &parsed); err != nil {
+		t.Fatalf("unmarshal override: %v", err)
+	}
+	serviceOverride, ok := parsed.Services["app"]
+	if !ok {
+		t.Fatalf("expected override for service app")
+	}
+	if serviceOverride.Environment["FOO"] != "bar" {
+		t.Fatalf("unexpected environment: %#v", serviceOverride.Environment)
+	}
+	if serviceOverride.Labels["devcontainer.config_path"] != "/path/to/devcontainer.json" {
+		t.Fatalf("unexpected labels: %#v", serviceOverride.Labels)
+	}
+	if serviceOverride.Image != "feature-image:latest" {
+		t.Fatalf("unexpected image: %s", serviceOverride.Image)
+	}
+	if len(serviceOverride.Volumes) != 1 || serviceOverride.Volumes[0] != "feature-cache:/cache" {
+		t.Fatalf("unexpected volumes: %#v", serviceOverride.Volumes)
+	}
+	if serviceOverride.Privileged == nil || !*serviceOverride.Privileged {
+		t.Fatalf("expected privileged to be true")
+	}
+	if len(serviceOverride.CapAdd) != 1 || serviceOverride.CapAdd[0] != "SYS_PTRACE" {
+		t.Fatalf("unexpected cap_add: %#v", serviceOverride.CapAdd)
+	}
+	if len(serviceOverride.SecurityOpt) != 1 || serviceOverride.SecurityOpt[0] != "label:role:ROLE" {
+		t.Fatalf("unexpected security_opt: %#v", serviceOverride.SecurityOpt)
+	}
+	if serviceOverride.Init == nil || !*serviceOverride.Init {
+		t.Fatalf("expected init to be true")
 	}
 }
 
@@ -256,17 +321,19 @@ func TestResolveComposeProjectName(t *testing.T) {
 	}
 }
 
-func TestLoadComposeProject_RequiresProjectName(t *testing.T) {
+func TestLoadComposeProject_WithProjectName(t *testing.T) {
 	root := t.TempDir()
 	composePath := filepath.Join(root, "compose.yml")
 	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.19\n"), 0o644); err != nil {
 		t.Fatalf("write compose: %v", err)
 	}
 
-	if _, err := loadComposeProject(context.Background(), []string{composePath}, root, "custom"); err == nil {
-		t.Fatalf("expected error for missing project name")
-	} else if !strings.Contains(err.Error(), "project name must not be empty") {
-		t.Fatalf("unexpected error: %v", err)
+	project, err := loadComposeProject(context.Background(), []string{composePath}, root, "custom")
+	if err != nil {
+		t.Fatalf("loadComposeProject: %v", err)
+	}
+	if project.Name != "custom" {
+		t.Fatalf("unexpected project name: %s", project.Name)
 	}
 }
 

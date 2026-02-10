@@ -1,0 +1,13 @@
+{
+  "name": "compose-features",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "overrideCommand": true,
+  "features": {
+    "./feature-a": {
+      "message": "hello",
+      "flag": true
+    }
+  },
+  "postCreateCommand": "echo user >> /feature.log"
+}

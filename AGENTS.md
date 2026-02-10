@@ -24,7 +24,7 @@
 ## 実装メモ
 - devcontainer.json の features を OCI/HTTPS/ローカル参照で解決し、install.sh を build 時に実行する。
 - Feature の lifecycle コマンドはインストール順で実行され、ユーザーの lifecycle コマンドより先に実行される。
-- docker compose 使用時は features を未サポートとしてエラーにする。
+- docker compose 使用時は service.image の場合のみ features をサポートし、service.build は未サポートとする。
 
 ## テスト
 - go test ./...

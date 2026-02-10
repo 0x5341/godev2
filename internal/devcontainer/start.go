@@ -44,9 +44,6 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 		return "", err
 	}
 	if isComposeConfig(cfg) {
-		if len(cfg.Features) > 0 {
-			return "", errors.New("features are not supported with docker compose")
-		}
 		return startComposeDevcontainer(ctx, configPath, cfg, options)
 	}
 
