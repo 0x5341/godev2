@@ -1,0 +1,9 @@
+{
+  "image": "alpine:3.19",
+  "initializeCommand": "echo init",
+  "onCreateCommand": ["echo", "create"],
+  "postCreateCommand": {
+    "alpha": "echo a",
+    "beta": ["echo", "b"]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "image": "alpine:3.19",
+  "features": {
+    "ghcr.io/user/repo/go": {
+      "flag": 123
+    }
+  }
+}

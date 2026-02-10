@@ -20,3 +20,13 @@
 ## 依存推奨ライブラリについて
 詳細は必ずcontext7で調査すること
 - oras-go (oci artifact distributionによるfeature/template機能)
+
+## 実装メモ
+- devcontainer.json の features を OCI/HTTPS/ローカル参照で解決し、install.sh を build 時に実行する。
+- Feature の lifecycle コマンドはインストール順で実行され、ユーザーの lifecycle コマンドより先に実行される。
+- docker compose 使用時は features を未サポートとしてエラーにする。
+
+## テスト
+- go test ./...
+- golangci-lint run
+- Docker デーモンが必要

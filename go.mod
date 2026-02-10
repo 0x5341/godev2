@@ -54,4 +54,5 @@ require (
 	google.golang.org/grpc v1.74.2 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
+	oras.land/oras-go/v2 v2.6.0 // indirect
 )

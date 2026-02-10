@@ -52,6 +52,32 @@ func testcasePath(t *testing.T, parts ...string) string {
 	return path
 }
 
+func readTestcaseFile(t *testing.T, parts ...string) []byte {
+	t.Helper()
+	path := testcasePath(t, parts...)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read testcase file: %v", err)
+	}
+	return content
+}
+
+func writeTestcaseFile(t *testing.T, dest string, parts ...string) {
+	t.Helper()
+	content := readTestcaseFile(t, parts...)
+	if err := os.WriteFile(dest, content, 0o644); err != nil {
+		t.Fatalf("write testcase file: %v", err)
+	}
+}
+
+func copyTestcaseDir(t *testing.T, dest string, parts ...string) {
+	t.Helper()
+	source := testcasePath(t, parts...)
+	if err := copyDir(source, dest); err != nil {
+		t.Fatalf("copy testcase dir: %v", err)
+	}
+}
+
 func cleanupContainer(t *testing.T, cli *client.Client, containerID string) {
 	t.Helper()
 	if containerID == "" {
@@ -170,23 +196,8 @@ func TestDockerEngine_BuildImageFromDevcontainer(t *testing.T) {
 func TestDockerEngine_LifecycleCommands(t *testing.T) {
 	cli := requireDocker(t)
 	root := t.TempDir()
-	configDir := filepath.Join(root, ".devcontainer")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	configPath := filepath.Join(configDir, "devcontainer.json")
-	config := `{
-		"image": "alpine:3.19",
-		"initializeCommand": "echo init > init.log",
-		"onCreateCommand": "echo onCreate >> ${containerWorkspaceFolder}/lifecycle.log",
-		"updateContentCommand": ["/bin/sh", "-c", "echo updateContent >> ${containerWorkspaceFolder}/lifecycle.log"],
-		"postCreateCommand": "echo postCreate >> ${containerWorkspaceFolder}/lifecycle.log",
-		"postStartCommand": "echo postStart >> ${containerWorkspaceFolder}/lifecycle.log",
-		"postAttachCommand": "echo postAttach >> ${containerWorkspaceFolder}/lifecycle.log"
-	}`
-	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	copyTestcaseDir(t, root, "docker-engine-lifecycle")
+	configPath := filepath.Join(root, ".devcontainer", "devcontainer.json")
 
 	inspectCtx, cancelInspect := context.WithTimeout(context.Background(), 10*time.Second)
 	removeBaseImage := false

@@ -160,6 +160,12 @@ func resolveVariable(token string, vars map[string]string, containerEnv map[stri
 	if value, ok := vars[token]; ok {
 		return value, nil
 	}
+	if value, ok := containerEnv[token]; ok {
+		return value, nil
+	}
+	if env := os.Getenv(token); env != "" {
+		return env, nil
+	}
 	return "", fmt.Errorf("unsupported variable: %s", token)
 }
 

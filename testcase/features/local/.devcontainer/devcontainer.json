@@ -1,0 +1,10 @@
+{
+  "image": "alpine:3.19",
+  "features": {
+    "./feature-a": {
+      "message": "hello",
+      "flag": true
+    }
+  },
+  "postCreateCommand": "echo user >> ${containerWorkspaceFolder}/feature.log"
+}

@@ -1,0 +1,10 @@
+{
+  "image": "alpine:3.19",
+  "forwardPorts": [3000, "3001:3002"],
+  "appPort": "4000",
+  "containerEnv": {"FOO": "bar"},
+  "mounts": [
+    "type=bind,source=${localWorkspaceFolder},target=/work",
+    {"type":"volume","source":"data","target":"/data"}
+  ]
+}

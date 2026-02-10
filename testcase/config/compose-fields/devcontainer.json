@@ -1,0 +1,6 @@
+{
+  "dockerComposeFile": ["compose.yml", "compose.override.yml"],
+  "service": "app",
+  "runServices": ["app", "db"],
+  "workspaceFolder": "/workspace"
+}

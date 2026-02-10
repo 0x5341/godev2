@@ -8,18 +8,9 @@ import (
 
 func TestResolveComposeWorkspacePaths_Defaults(t *testing.T) {
 	root := t.TempDir()
+	copyTestcaseDir(t, root, "compose", "defaults")
 	configDir := filepath.Join(root, ".devcontainer")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"docker-compose.yml","service":"app"}`), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	composePath := filepath.Join(configDir, "docker-compose.yml")
-	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.19\n"), 0o644); err != nil {
-		t.Fatalf("write compose: %v", err)
-	}
 
 	cfg := &DevcontainerConfig{
 		DockerComposeFile: StringSlice{"docker-compose.yml"},
@@ -43,14 +34,8 @@ func TestResolveComposeWorkspacePaths_Defaults(t *testing.T) {
 
 func TestResolveComposeWorkspacePaths_ConfigInRoot(t *testing.T) {
 	root := t.TempDir()
+	copyTestcaseDir(t, root, "compose", "root")
 	configPath := filepath.Join(root, "devcontainer.json")
-	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"compose.yml","service":"app","workspaceFolder":"/workspace"}`), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	composePath := filepath.Join(root, "compose.yml")
-	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.19\n"), 0o644); err != nil {
-		t.Fatalf("write compose: %v", err)
-	}
 
 	cfg := &DevcontainerConfig{
 		DockerComposeFile: StringSlice{"compose.yml"},
@@ -75,22 +60,11 @@ func TestResolveComposeWorkspacePaths_ConfigInRoot(t *testing.T) {
 
 func TestResolveComposeFiles(t *testing.T) {
 	root := t.TempDir()
+	copyTestcaseDir(t, root, "compose", "multi")
 	configDir := filepath.Join(root, ".devcontainer")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":["compose.yml","compose.override.yml"],"service":"app"}`), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
 	first := filepath.Join(configDir, "compose.yml")
 	second := filepath.Join(configDir, "compose.override.yml")
-	if err := os.WriteFile(first, []byte("services:\n  app:\n    image: alpine:3.19\n"), 0o644); err != nil {
-		t.Fatalf("write compose: %v", err)
-	}
-	if err := os.WriteFile(second, []byte("services:\n  app:\n    environment:\n      FOO: bar\n"), 0o644); err != nil {
-		t.Fatalf("write compose override: %v", err)
-	}
 
 	cfg := &DevcontainerConfig{
 		DockerComposeFile: StringSlice{"compose.yml", "compose.override.yml"},
@@ -107,14 +81,9 @@ func TestResolveComposeFiles(t *testing.T) {
 
 func TestResolveComposeFiles_Errors(t *testing.T) {
 	root := t.TempDir()
+	copyTestcaseDir(t, root, "compose", "errors")
 	configDir := filepath.Join(root, ".devcontainer")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"compose.yml","service":"app"}`), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
 
 	tests := []struct {
 		name  string
