@@ -312,6 +312,13 @@ func parseMountString(spec string) (mount.Mount, error) {
 	return result, nil
 }
 
+// ParseMountSpec は Docker の --mount 文字列を Mount に変換する。
+// 影響: 文字列を検証し、必須項目が欠ける場合はエラーとなる。
+// 例:
+//
+//	m, err := devcontainer.ParseMountSpec("type=bind,source=/tmp,target=/work")
+//
+// 類似: MountSpec の UnmarshalJSON は devcontainer.json の mount 設定を読むためのもので、CLI 文字列を直接扱わない。
 func ParseMountSpec(spec string) (Mount, error) {
 	parsed, err := parseMountString(spec)
 	if err != nil {

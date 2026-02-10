@@ -20,6 +20,13 @@ import (
 	"github.com/docker/go-units"
 )
 
+// StartDevcontainer は devcontainer.json を読み込み、必要なイメージ作成とコンテナ起動を行う。
+// 影響: Docker デーモン上でイメージ取得/ビルド、コンテナ作成・起動、features と lifecycle コマンド実行を行う。
+// 例:
+//
+//	id, err := devcontainer.StartDevcontainer(ctx, devcontainer.WithConfigPath("./.devcontainer/devcontainer.json"))
+//
+// 類似: BuildImageFromDevcontainer はイメージ構築のみでコンテナ起動や lifecycle 実行は行わない。
 func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error) {
 	options := defaultStartOptions()
 	for _, opt := range opts {
@@ -248,6 +255,13 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 	return created.ID, nil
 }
 
+// StopDevcontainer は指定したコンテナを停止する。
+// 影響: Docker デーモンに停止要求を送信し、timeout があれば停止猶予時間として渡す。
+// 例:
+//
+//	err := devcontainer.StopDevcontainer(ctx, containerID, 10*time.Second)
+//
+// 類似: RemoveDevcontainer は停止後の削除まで行い、WithRemoveOnStop は自動削除設定を付与する。
 func StopDevcontainer(ctx context.Context, containerID string, timeout time.Duration) error {
 	cli, err := newDockerClient()
 	if err != nil {
@@ -264,6 +278,13 @@ func StopDevcontainer(ctx context.Context, containerID string, timeout time.Dura
 	return cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeoutSeconds})
 }
 
+// RemoveDevcontainer は指定したコンテナを強制削除し、関連ボリュームも削除する。
+// 影響: Docker デーモン上のコンテナとボリュームが削除され、復元できない。
+// 例:
+//
+//	err := devcontainer.RemoveDevcontainer(ctx, containerID)
+//
+// 類似: WithRemoveOnStop は起動時に自動削除を設定するだけで、既存コンテナは削除しない。
 func RemoveDevcontainer(ctx context.Context, containerID string) error {
 	cli, err := newDockerClient()
 	if err != nil {
@@ -276,6 +297,13 @@ func RemoveDevcontainer(ctx context.Context, containerID string) error {
 	return cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true, RemoveVolumes: true})
 }
 
+// BuildImageFromDevcontainer は devcontainer.json からイメージをビルドする。
+// 影響: Docker デーモンでビルドを実行し、features があればそれを組み込んだイメージを作成する。
+// 例:
+//
+//	imageRef, err := devcontainer.BuildImageFromDevcontainer(ctx, "./.devcontainer/devcontainer.json")
+//
+// 類似: StartDevcontainer はイメージビルドに加えてコンテナ起動と lifecycle 実行を行う。
 func BuildImageFromDevcontainer(ctx context.Context, configPath string) (string, error) {
 	cfg, err := LoadConfig(configPath)
 	if err != nil {

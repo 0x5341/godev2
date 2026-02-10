@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/0x5341/godev2/internal/devcontainer"
+	"github.com/0x5341/godev2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

@@ -21,6 +21,14 @@ type FeatureOptionValue struct {
 	Bool   *bool
 }
 
+// UnmarshalJSON は FeatureOptionValue に JSON の文字列または真偽値を読み込む。
+// 影響: null は拒否し、受け取った型に応じて String/Bool のどちらかを設定する。
+// 例:
+//
+//	var v devcontainer.FeatureOptionValue
+//	_ = json.Unmarshal([]byte(`true`), &v)
+//
+// 類似: StringSlice の UnmarshalJSON は文字列配列だが、FeatureOptionValue は単一の型付き値を保持する。
 func (v *FeatureOptionValue) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
 		return errors.New("feature option value cannot be null")
@@ -47,6 +55,15 @@ func (v *FeatureOptionValue) UnmarshalJSON(data []byte) error {
 	}
 }
 
+// StringValue は FeatureOptionValue を文字列化して返す。
+// 影響: Bool は "true"/"false" に変換され、値未設定ならエラーになる。
+// 例:
+//
+//	value := true
+//	v := devcontainer.FeatureOptionValue{Bool: &value}
+//	s, err := v.StringValue()
+//
+// 類似: 直接 String/Bool を参照するよりも型判定と変換を一括で行う点が異なる。
 func (v FeatureOptionValue) StringValue() (string, error) {
 	switch {
 	case v.String != nil:
@@ -76,6 +93,14 @@ type FeatureOptions map[string]FeatureOptionValue
 
 type FeatureSet map[string]FeatureOptions
 
+// UnmarshalJSON は FeatureSet に JSON の feature マップを読み込む。
+// 影響: feature ID や option の空値を拒否し、"feature": "1.0" の短縮形式を version オプションに展開する。
+// 例:
+//
+//	var fs devcontainer.FeatureSet
+//	_ = json.Unmarshal([]byte(`{"ghcr.io/devcontainers/features/git":"1.0"}`), &fs)
+//
+// 類似: FeatureOptionValue の UnmarshalJSON は単一 option 値の解析であり、FeatureSet は feature 全体を構造化する。
 func (fs *FeatureSet) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
 		return nil

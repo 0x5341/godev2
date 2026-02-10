@@ -52,6 +52,14 @@ type DevcontainerBuild struct {
 
 type StringSlice []string
 
+// UnmarshalJSON は StringSlice に JSON の文字列または文字列配列を読み込む。
+// 影響: devcontainer.json の項目で "value" と ["value1","value2"] の両方を許可し、型が不正な場合はエラーになる。
+// 例:
+//
+//	var s devcontainer.StringSlice
+//	_ = json.Unmarshal([]byte(`["a","b"]`), &s)
+//
+// 類似: PortList の UnmarshalJSON は数値も受け付けて文字列化するが、StringSlice は文字列のみ。
 func (s *StringSlice) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
 		return nil
@@ -78,6 +86,14 @@ func (s *StringSlice) UnmarshalJSON(data []byte) error {
 
 type PortList []string
 
+// UnmarshalJSON は PortList に数値/文字列または配列のポート指定を読み込む。
+// 影響: 3000 などの数値は "3000" に正規化され、無効な値はエラーになる。
+// 例:
+//
+//	var p devcontainer.PortList
+//	_ = json.Unmarshal([]byte(`[3000,"9229"]`), &p)
+//
+// 類似: StringSlice の UnmarshalJSON は数値を受け付けず、ポート正規化もしない。
 func (p *PortList) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
 		return nil
@@ -127,6 +143,14 @@ type MountSpec struct {
 	Target string
 }
 
+// UnmarshalJSON は MountSpec に JSON の文字列またはオブジェクト形式のマウント指定を読み込む。
+// 影響: "type" と "target" が欠けるとエラーになり、文字列形式は Raw に保持される。
+// 例:
+//
+//	var m devcontainer.MountSpec
+//	_ = json.Unmarshal([]byte(`{"type":"bind","source":"/tmp","target":"/work"}`), &m)
+//
+// 類似: ParseMountSpec は CLI の --mount 文字列を Mount に変換する点が異なる。
 func (m *MountSpec) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
 		return nil
@@ -156,6 +180,13 @@ func (m *MountSpec) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// LoadConfig は devcontainer.json を読み込み、コメントを除去して DevcontainerConfig にデコードする。
+// 影響: ファイル I/O を行い、無効な JSON や仕様違反はエラーになる。
+// 例:
+//
+//	cfg, err := devcontainer.LoadConfig("./.devcontainer/devcontainer.json")
+//
+// 類似: FindConfigPath はパス探索のみ行い、読み込みやデコードはしない。
 func LoadConfig(path string) (*DevcontainerConfig, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -172,6 +203,13 @@ func LoadConfig(path string) (*DevcontainerConfig, error) {
 	return &cfg, nil
 }
 
+// FindConfigPath は baseDir から devcontainer.json を探索して最初に見つかったパスを返す。
+// 影響: ファイルシステムの存在確認を行い、見つからない場合はエラーになる。
+// 例:
+//
+//	path, err := devcontainer.FindConfigPath(".")
+//
+// 類似: LoadConfig はパスが分かっている前提で読み込みとデコードを行う。
 func FindConfigPath(baseDir string) (string, error) {
 	candidates := []string{
 		filepath.Join(baseDir, ".devcontainer", "devcontainer.json"),
