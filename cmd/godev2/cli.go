@@ -14,6 +14,8 @@ import (
 )
 
 type StartFunc func(context.Context, startConfig, []devcontainer.StartOption) (string, error)
+type StopFunc func(context.Context, stopConfig) error
+type DownFunc func(context.Context, downConfig) error
 
 // startConfig holds CLI flag values for devcontainer start.
 type startConfig struct {
@@ -31,10 +33,21 @@ type startConfig struct {
 	RunArgs      []string      // RunArgs holds extra docker run arguments.
 }
 
+// stopConfig holds CLI flag values for devcontainer stop.
+type stopConfig struct {
+	ContainerID string        // ContainerID is the target container.
+	Timeout     time.Duration // Timeout sets the stop grace period.
+}
+
+// downConfig holds CLI flag values for devcontainer down.
+type downConfig struct {
+	ContainerID string // ContainerID is the target container.
+}
+
 var errUsage = errors.New("usage error")
 
-func run(args []string, start StartFunc, stdout, stderr io.Writer) int {
-	cmd := newRootCommand(start)
+func run(args []string, start StartFunc, stop StopFunc, down DownFunc, stdout, stderr io.Writer) int {
+	cmd := newRootCommand(start, stop, down)
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 	cmd.SetArgs(args)
@@ -61,7 +74,7 @@ func run(args []string, start StartFunc, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func newRootCommand(start StartFunc) *cobra.Command {
+func newRootCommand(start StartFunc, stop StopFunc, down DownFunc) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "godev2",
 		SilenceUsage:  true,
@@ -70,11 +83,11 @@ func newRootCommand(start StartFunc) *cobra.Command {
 			return errUsage
 		},
 	}
-	cmd.AddCommand(newDevcontainerCommand(start))
+	cmd.AddCommand(newDevcontainerCommand(start, stop, down))
 	return cmd
 }
 
-func newDevcontainerCommand(start StartFunc) *cobra.Command {
+func newDevcontainerCommand(start StartFunc, stop StopFunc, down DownFunc) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "devcontainer",
 		Short: "Devcontainer commands",
@@ -83,6 +96,8 @@ func newDevcontainerCommand(start StartFunc) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newStartCommand(start))
+	cmd.AddCommand(newStopCommand(stop))
+	cmd.AddCommand(newDownCommand(down))
 	return cmd
 }
 
@@ -125,6 +140,14 @@ func newStartCommand(start StartFunc) *cobra.Command {
 
 func startWithConfig(ctx context.Context, cfg startConfig, options []devcontainer.StartOption) (string, error) {
 	return devcontainer.StartDevcontainer(ctx, options...)
+}
+
+func stopWithConfig(ctx context.Context, cfg stopConfig) error {
+	return devcontainer.StopDevcontainer(ctx, cfg.ContainerID, cfg.Timeout)
+}
+
+func downWithConfig(ctx context.Context, cfg downConfig) error {
+	return devcontainer.RemoveDevcontainer(ctx, cfg.ContainerID)
 }
 
 func buildStartOptions(cfg startConfig) ([]devcontainer.StartOption, error) {
@@ -178,6 +201,40 @@ func buildStartOptions(cfg startConfig) ([]devcontainer.StartOption, error) {
 		options = append(options, devcontainer.WithNetwork(cfg.Network))
 	}
 	return options, nil
+}
+
+func newStopCommand(stop StopFunc) *cobra.Command {
+	cfg := stopConfig{}
+	cmd := &cobra.Command{
+		Use:   "stop <container-id>",
+		Short: "Stop a devcontainer",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return errUsage
+			}
+			cfg.ContainerID = args[0]
+			return stop(cmd.Context(), cfg)
+		},
+	}
+	flags := cmd.Flags()
+	flags.DurationVar(&cfg.Timeout, "timeout", 0, "Timeout for stopping container")
+	return cmd
+}
+
+func newDownCommand(down DownFunc) *cobra.Command {
+	cfg := downConfig{}
+	cmd := &cobra.Command{
+		Use:   "down <container-id>",
+		Short: "Remove a devcontainer",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return errUsage
+			}
+			cfg.ContainerID = args[0]
+			return down(cmd.Context(), cfg)
+		},
+	}
+	return cmd
 }
 
 func splitKeyValue(input string) (string, string, error) {

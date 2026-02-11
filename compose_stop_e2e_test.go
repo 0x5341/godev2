@@ -2,24 +2,22 @@ package devcontainer
 
 import (
 	"context"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestDockerCompose_FeaturesImage(t *testing.T) {
+func TestDockerCompose_StopRemove_Dispatcher(t *testing.T) {
 	cli := requireDocker(t)
 	requireDockerCompose(t)
 	pre := countDockerResources(t, cli)
 	containerID := ""
-	featuresImage := ""
 	baseImage := "alpine:3.19"
 	removeBaseImage := false
 
 	root := t.TempDir()
-	copyTestcaseDir(t, root, "compose", "features-image")
+	copyTestcaseDir(t, root, "compose", "stop-remove")
 	configPath := filepath.Join(root, ".devcontainer", "devcontainer.json")
 
 	cfg, err := LoadConfig(configPath)
@@ -29,13 +27,6 @@ func TestDockerCompose_FeaturesImage(t *testing.T) {
 	workspaceRoot, _, vars, err := resolveComposeWorkspacePaths(configPath, cfg)
 	if err != nil {
 		t.Fatalf("resolveComposeWorkspacePaths: %v", err)
-	}
-	features, err := resolveFeatures(context.Background(), configPath, workspaceRoot, cfg)
-	if err != nil {
-		t.Fatalf("resolveFeatures: %v", err)
-	}
-	if features != nil {
-		featuresImage = featuresImageTag(workspaceRoot, vars["devcontainerId"], features.Order)
 	}
 	composeFiles, err := resolveComposeFiles(configPath, cfg)
 	if err != nil {
@@ -54,7 +45,6 @@ func TestDockerCompose_FeaturesImage(t *testing.T) {
 		defer cancel()
 		_ = composeDown(ctx, workspaceRoot, projectName, composeFiles)
 		cleanupContainer(t, cli, containerID)
-		cleanupImage(t, cli, featuresImage)
 		if removeBaseImage {
 			cleanupImage(t, cli, baseImage)
 		}
@@ -67,26 +57,55 @@ func TestDockerCompose_FeaturesImage(t *testing.T) {
 		t.Fatalf("StartDevcontainer: %v", err)
 	}
 
-	output := execContainer(t, cli, containerID, []string{"cat", "/tmp/feature-installed"})
-	if strings.TrimSpace(output) != "message=hello flag=true" {
-		t.Fatalf("unexpected feature output: %s", output)
+	dbContainerID, err := composePrimaryContainerID(context.Background(), workspaceRoot, projectName, composeFiles, "", "db")
+	if err != nil {
+		t.Fatalf("composePrimaryContainerID: %v", err)
 	}
-	logOutput := execContainer(t, cli, containerID, []string{"cat", "/feature.log"})
-	lines := strings.Split(strings.TrimSpace(logOutput), "\n")
-	if len(lines) != 2 || lines[0] != "feature" || lines[1] != "user" {
-		t.Fatalf("unexpected feature log: %#v", lines)
+	dbInspect, err := cli.ContainerInspect(context.Background(), dbContainerID)
+	if err != nil {
+		t.Fatalf("ContainerInspect db: %v", err)
+	}
+	if dbInspect.State == nil || !dbInspect.State.Running {
+		t.Fatalf("db container is not running")
 	}
 
-	downCtx, cancelDown := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancelDown()
-	if err := composeDown(downCtx, workspaceRoot, projectName, composeFiles); err != nil {
-		t.Fatalf("compose down: %v", err)
+	if err := StopDevcontainer(context.Background(), containerID, 10*time.Second); err != nil {
+		t.Fatalf("StopDevcontainer: %v", err)
+	}
+	appInspect, err := cli.ContainerInspect(context.Background(), containerID)
+	if err != nil {
+		t.Fatalf("ContainerInspect app: %v", err)
+	}
+	if appInspect.State == nil || appInspect.State.Running {
+		t.Fatalf("app container still running")
+	}
+	dbInspect, err = cli.ContainerInspect(context.Background(), dbContainerID)
+	if err != nil {
+		t.Fatalf("ContainerInspect db: %v", err)
+	}
+	if dbInspect.State == nil || dbInspect.State.Running {
+		t.Fatalf("db container still running")
+	}
+
+	if err := RemoveDevcontainer(context.Background(), containerID); err != nil {
+		t.Fatalf("RemoveDevcontainer: %v", err)
 	}
 	containerID = ""
-	cleanupImage(t, cli, featuresImage)
-	featuresImage = ""
+	checkCtx, cancelCheck := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelCheck()
+	args := composeBaseArgs(workspaceRoot, projectName, composeFiles, "")
+	args = append(args, "ps", "-q")
+	output, err := runDockerCompose(checkCtx, workspaceRoot, args)
+	if err != nil {
+		t.Fatalf("compose ps: %v", err)
+	}
+	if strings.TrimSpace(output) != "" {
+		t.Fatalf("compose containers still exist: %s", strings.TrimSpace(output))
+	}
 	if removeBaseImage {
 		cleanupImage(t, cli, baseImage)
+		baseImage = ""
+		removeBaseImage = false
 	}
 
 	post := countDockerResources(t, cli)
@@ -98,15 +117,5 @@ func TestDockerCompose_FeaturesImage(t *testing.T) {
 	}
 	if post.volumes > pre.volumes {
 		t.Fatalf("volume count increased: %d -> %d", pre.volumes, post.volumes)
-	}
-}
-
-func requireDockerCompose(t *testing.T) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "docker", "compose", "version")
-	if err := cmd.Run(); err != nil {
-		t.Skipf("docker compose unavailable: %v", err)
 	}
 }

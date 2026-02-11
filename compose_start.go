@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/compose-spec/compose-go/loader"
 	"github.com/compose-spec/compose-go/types"
@@ -348,6 +349,23 @@ func composeUp(ctx context.Context, projectDir, projectName string, composeFiles
 	if len(services) > 0 {
 		args = append(args, services...)
 	}
+	_, err := runDockerCompose(ctx, projectDir, args)
+	return err
+}
+
+func composeStop(ctx context.Context, projectDir, projectName string, composeFiles []string, timeout time.Duration) error {
+	args := composeBaseArgs(projectDir, projectName, composeFiles, "")
+	args = append(args, "stop")
+	if timeout > 0 {
+		args = append(args, "--timeout", fmt.Sprintf("%d", int(timeout.Seconds())))
+	}
+	_, err := runDockerCompose(ctx, projectDir, args)
+	return err
+}
+
+func composeDown(ctx context.Context, projectDir, projectName string, composeFiles []string) error {
+	args := composeBaseArgs(projectDir, projectName, composeFiles, "")
+	args = append(args, "down", "--volumes", "--remove-orphans")
 	_, err := runDockerCompose(ctx, projectDir, args)
 	return err
 }

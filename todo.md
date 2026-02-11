@@ -13,7 +13,7 @@
 
 - [x] Docker Compose サポート
   - 説明: devcontainer.json の compose/dockerComposeFile/runServices 等を解釈し、Compose ベースのサービス群を起動・管理する機能を追加する。
-  - 進捗: 起動/primary service 解決/override まで対応済み。Compose V2 のみ、docker compose CLI を使用。compose build/down と E2E クリーンアップ検証は未対応。
+  - 進捗: 起動/primary service 解決/override/stop/down まで対応済み。Compose V2 のみ、docker compose CLI を使用。compose build は未対応。
   - 受け入れ条件: 単体サービス定義と multi-service compose ファイルの両方で Build→Start→Stop→Remove が動作し、テスト実行後に image/container/volume が残らないことを自動検証できること。
 
 - [x] ライフサイクルスクリプトの実行

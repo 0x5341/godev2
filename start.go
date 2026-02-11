@@ -271,11 +271,14 @@ func StopDevcontainer(ctx context.Context, containerID string, timeout time.Dura
 		_ = cli.Close()
 	}()
 
-	if timeout <= 0 {
-		return cli.ContainerStop(ctx, containerID, container.StopOptions{})
+	target, ok, err := composeTargetFromContainer(ctx, cli, containerID)
+	if err != nil {
+		return err
 	}
-	timeoutSeconds := int(timeout.Seconds())
-	return cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeoutSeconds})
+	if ok {
+		return composeStop(ctx, target.projectDir, target.projectName, target.composeFiles, timeout)
+	}
+	return stopContainer(ctx, cli, containerID, timeout)
 }
 
 // RemoveDevcontainer force-removes the specified container and its volumes.
@@ -294,6 +297,66 @@ func RemoveDevcontainer(ctx context.Context, containerID string) error {
 		_ = cli.Close()
 	}()
 
+	target, ok, err := composeTargetFromContainer(ctx, cli, containerID)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return composeDown(ctx, target.projectDir, target.projectName, target.composeFiles)
+	}
+	return removeContainer(ctx, cli, containerID)
+}
+
+type composeTarget struct {
+	projectDir   string
+	projectName  string
+	composeFiles []string
+}
+
+func composeTargetFromContainer(ctx context.Context, cli *client.Client, containerID string) (*composeTarget, bool, error) {
+	inspect, err := cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return nil, false, err
+	}
+	if inspect.Config == nil || len(inspect.Config.Labels) == 0 {
+		return nil, false, nil
+	}
+	configPath := inspect.Config.Labels["devcontainer.config_path"]
+	if configPath == "" {
+		return nil, false, nil
+	}
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		return nil, false, nil
+	}
+	if !isComposeConfig(cfg) {
+		return nil, false, nil
+	}
+	workspaceRoot, _, vars, err := resolveComposeWorkspacePaths(configPath, cfg)
+	if err != nil {
+		return nil, false, err
+	}
+	composeFiles, err := resolveComposeFiles(configPath, cfg)
+	if err != nil {
+		return nil, false, err
+	}
+	projectName := resolveComposeProjectName(cfg, workspaceRoot, vars["devcontainerId"])
+	return &composeTarget{
+		projectDir:   workspaceRoot,
+		projectName:  projectName,
+		composeFiles: composeFiles,
+	}, true, nil
+}
+
+func stopContainer(ctx context.Context, cli *client.Client, containerID string, timeout time.Duration) error {
+	if timeout <= 0 {
+		return cli.ContainerStop(ctx, containerID, container.StopOptions{})
+	}
+	timeoutSeconds := int(timeout.Seconds())
+	return cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeoutSeconds})
+}
+
+func removeContainer(ctx context.Context, cli *client.Client, containerID string) error {
 	return cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true, RemoveVolumes: true})
 }
 

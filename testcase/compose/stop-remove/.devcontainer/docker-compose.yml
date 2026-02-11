@@ -1,0 +1,7 @@
+services:
+  app:
+    image: alpine:3.19
+    command: ["sh", "-c", "while sleep 1000; do :; done"]
+  db:
+    image: alpine:3.19
+    command: ["sh", "-c", "while sleep 1000; do :; done"]

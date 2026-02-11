@@ -1,0 +1,7 @@
+{
+  "name": "compose-stop-remove",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "runServices": ["app", "db"],
+  "workspaceFolder": "/workspace"
+}

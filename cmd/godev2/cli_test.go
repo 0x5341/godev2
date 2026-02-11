@@ -19,8 +19,14 @@ func TestStartCommand_ParsesFlagsAndCallsStart(t *testing.T) {
 		got = cfg
 		return "container-123", nil
 	}
+	stopFn := func(ctx context.Context, _ stopConfig) error {
+		return nil
+	}
+	downFn := func(ctx context.Context, _ downConfig) error {
+		return nil
+	}
 
-	cmd := newRootCommand(startFn)
+	cmd := newRootCommand(startFn, stopFn, downFn)
 	stdout := &bytes.Buffer{}
 	cmd.SetOut(stdout)
 	cmd.SetErr(io.Discard)
@@ -95,8 +101,14 @@ func TestStartCommand_InvalidEnv(t *testing.T) {
 		called = true
 		return "", nil
 	}
+	stopFn := func(ctx context.Context, _ stopConfig) error {
+		return nil
+	}
+	downFn := func(ctx context.Context, _ downConfig) error {
+		return nil
+	}
 
-	cmd := newRootCommand(startFn)
+	cmd := newRootCommand(startFn, stopFn, downFn)
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"devcontainer", "start", "--env", "INVALID"})
@@ -106,5 +118,70 @@ func TestStartCommand_InvalidEnv(t *testing.T) {
 	}
 	if called {
 		t.Fatal("start should not have been called")
+	}
+}
+
+func TestStopCommand_ParsesFlagsAndCallsStop(t *testing.T) {
+	var got stopConfig
+	called := false
+	startFn := func(ctx context.Context, cfg startConfig, _ []devcontainer.StartOption) (string, error) {
+		return "", nil
+	}
+	stopFn := func(ctx context.Context, cfg stopConfig) error {
+		called = true
+		got = cfg
+		return nil
+	}
+	downFn := func(ctx context.Context, _ downConfig) error {
+		return nil
+	}
+
+	cmd := newRootCommand(startFn, stopFn, downFn)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"devcontainer", "stop", "--timeout", "3s", "container-123"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !called {
+		t.Fatal("stop function was not called")
+	}
+	if got.ContainerID != "container-123" {
+		t.Fatalf("expected container ID, got %q", got.ContainerID)
+	}
+	if got.Timeout != 3*time.Second {
+		t.Fatalf("expected timeout 3s, got %s", got.Timeout)
+	}
+}
+
+func TestDownCommand_CallsDown(t *testing.T) {
+	var got downConfig
+	called := false
+	startFn := func(ctx context.Context, cfg startConfig, _ []devcontainer.StartOption) (string, error) {
+		return "", nil
+	}
+	stopFn := func(ctx context.Context, _ stopConfig) error {
+		return nil
+	}
+	downFn := func(ctx context.Context, cfg downConfig) error {
+		called = true
+		got = cfg
+		return nil
+	}
+
+	cmd := newRootCommand(startFn, stopFn, downFn)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"devcontainer", "down", "container-123"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !called {
+		t.Fatal("down function was not called")
+	}
+	if got.ContainerID != "container-123" {
+		t.Fatalf("expected container ID, got %q", got.ContainerID)
 	}
 }
