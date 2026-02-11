@@ -1,4 +1,4 @@
-module github.com/0x5341/godev2
+module github.com/0x5341/godev
 
 go 1.25
 

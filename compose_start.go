@@ -171,7 +171,7 @@ func resolveComposeProjectName(cfg *DevcontainerConfig, workspaceRoot, devcontai
 	if base == "" {
 		base = "devcontainer"
 	}
-	return fmt.Sprintf("godev2-%s-%s", base, devcontainerID)
+	return fmt.Sprintf("godev-%s-%s", base, devcontainerID)
 }
 
 func loadComposeProject(ctx context.Context, composeFiles []string, workingDir, projectName string) (*types.Project, error) {
@@ -329,7 +329,7 @@ func writeComposeOverride(content []byte) (string, error) {
 	if len(content) == 0 {
 		return "", nil
 	}
-	file, err := os.CreateTemp("", "godev2-compose-override-*.yml")
+	file, err := os.CreateTemp("", "godev-compose-override-*.yml")
 	if err != nil {
 		return "", err
 	}

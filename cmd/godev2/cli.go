@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/0x5341/godev2"
+	"github.com/0x5341/godev"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -76,7 +76,7 @@ func run(args []string, start StartFunc, stop StopFunc, down DownFunc, stdout, s
 
 func newRootCommand(start StartFunc, stop StopFunc, down DownFunc) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "godev2",
+		Use:           "godev",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

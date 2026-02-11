@@ -1,4 +1,4 @@
-# godev2: devcontainer implementation in go
+# godev: devcontainer implementation in go
 
 ## 目標
 - シングルバイナリ

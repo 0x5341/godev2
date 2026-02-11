@@ -95,7 +95,7 @@ func TestBuildComposeOverride_NoOverrides(t *testing.T) {
 
 func TestComposeBaseArgs(t *testing.T) {
 	projectDir := "/project"
-	projectName := "godev2-project"
+	projectName := "godev-project"
 	composeFiles := []string{"/project/compose.yml", "/project/compose.override.yml"}
 
 	tests := []struct {
@@ -316,7 +316,7 @@ func TestResolveComposeProjectName(t *testing.T) {
 	}
 
 	cfg = &DevcontainerConfig{}
-	if got := resolveComposeProjectName(cfg, "/workspaces/demo", "deadbeef"); got != "godev2-demo-deadbeef" {
+	if got := resolveComposeProjectName(cfg, "/workspaces/demo", "deadbeef"); got != "godev-demo-deadbeef" {
 		t.Fatalf("unexpected project name: %s", got)
 	}
 }

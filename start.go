@@ -622,7 +622,7 @@ func imageTagForBuild(workspaceRoot, devcontainerID string) string {
 	if base == "" {
 		base = "devcontainer"
 	}
-	return fmt.Sprintf("godev2-%s-%s:latest", base, devcontainerID)
+	return fmt.Sprintf("godev-%s-%s:latest", base, devcontainerID)
 }
 
 func sanitizeName(name string) string {
@@ -653,7 +653,7 @@ func resolveContainerName(configName, workspaceRoot, devcontainerID string) stri
 	if base == "" {
 		base = "devcontainer"
 	}
-	return fmt.Sprintf("godev2-%s-%s", base, devcontainerID)
+	return fmt.Sprintf("godev-%s-%s", base, devcontainerID)
 }
 
 func mergeLabels(base, overlay map[string]string) map[string]string {

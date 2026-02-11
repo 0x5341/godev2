@@ -227,7 +227,7 @@ func dockerConfigPath() string {
 }
 
 func extractFeatureArchive(data []byte) (string, error) {
-	root, err := os.MkdirTemp("", "godev2-feature-*")
+	root, err := os.MkdirTemp("", "godev-feature-*")
 	if err != nil {
 		return "", err
 	}

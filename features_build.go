@@ -21,7 +21,7 @@ func buildFeaturesImage(ctx context.Context, cli *client.Client, baseImage, base
 	if len(features) == 0 {
 		return baseImage, nil
 	}
-	contextDir, err := os.MkdirTemp("", "godev2-features-build-*")
+	contextDir, err := os.MkdirTemp("", "godev-features-build-*")
 	if err != nil {
 		return "", err
 	}
@@ -118,7 +118,7 @@ func featuresImageTag(workspaceRoot, devcontainerID string, features []*Resolved
 	}
 	seed := strings.Join(hashInput, ",")
 	sum := sha256.Sum256([]byte(seed))
-	return fmt.Sprintf("godev2-%s-%s-features-%s:latest", base, devcontainerID, hex.EncodeToString(sum[:8]))
+	return fmt.Sprintf("godev-%s-%s-features-%s:latest", base, devcontainerID, hex.EncodeToString(sum[:8]))
 }
 
 func featureUserEnv(cfg *DevcontainerConfig, baseUser string) map[string]string {
