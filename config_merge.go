@@ -1,4 +1,4 @@
-package devcontainer
+package godev
 
 func MergeConfig(base, overlay *DevcontainerConfig) *DevcontainerConfig {
 	if base == nil && overlay == nil {

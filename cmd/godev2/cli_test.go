@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0x5341/godev"
+	devcontainer "github.com/0x5341/godev"
 )
 
 func TestStartCommand_ParsesFlagsAndCallsStart(t *testing.T) {

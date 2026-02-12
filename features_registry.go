@@ -1,4 +1,4 @@
-package devcontainer
+package godev
 
 import (
 	"archive/tar"
