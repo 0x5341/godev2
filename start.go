@@ -39,13 +39,20 @@ func StartDevcontainer(ctx context.Context, opts ...StartOption) (string, error)
 		defer cancel()
 	}
 
-	configPath, err := resolveConfigPath(options.ConfigPath)
+	configPath, err := resolveConfigPath(options.ConfigPath, options.Config != nil)
 	if err != nil {
 		return "", err
 	}
-	cfg, err := LoadConfig(configPath)
-	if err != nil {
-		return "", err
+	baseCfg := options.Config
+	if baseCfg == nil {
+		baseCfg, err = LoadConfig(configPath)
+		if err != nil {
+			return "", err
+		}
+	}
+	cfg := MergeConfig(nil, baseCfg)
+	for _, overlay := range options.MergeConfigs {
+		cfg = MergeConfig(cfg, overlay)
 	}
 	if err := validateConfig(cfg); err != nil {
 		return "", err
@@ -448,7 +455,7 @@ func buildMounts(workspaceMount string, configMounts []MountSpec, extraMounts []
 	return mounts, nil
 }
 
-func resolveConfigPath(path string) (string, error) {
+func resolveConfigPath(path string, allowMissing bool) (string, error) {
 	if path != "" {
 		return filepath.Abs(path)
 	}
@@ -456,7 +463,17 @@ func resolveConfigPath(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return FindConfigPath(cwd)
+	if !allowMissing {
+		return FindConfigPath(cwd)
+	}
+	if found, err := FindConfigPath(cwd); err == nil {
+		return found, nil
+	}
+	devcontainerPath := filepath.Join(cwd, ".devcontainer")
+	if stat, err := os.Stat(devcontainerPath); err == nil && stat.IsDir() {
+		return filepath.Join(devcontainerPath, "devcontainer.json"), nil
+	}
+	return filepath.Join(cwd, "devcontainer.json"), nil
 }
 
 func ensureImage(ctx context.Context, cli *client.Client, cfg *DevcontainerConfig, configPath, workspaceRoot, devcontainerID string) (string, error) {

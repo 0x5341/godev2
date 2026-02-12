@@ -6,19 +6,21 @@ type StartOption func(*startOptions)
 
 // startOptions holds StartDevcontainer configuration derived from StartOption values.
 type startOptions struct {
-	ConfigPath   string            // ConfigPath overrides the devcontainer.json path.
-	Env          map[string]string // Env holds extra environment variables.
-	ExtraPublish []string          // ExtraPublish adds port publish entries.
-	ExtraMounts  []Mount           // ExtraMounts adds extra mount entries.
-	RunArgs      []string          // RunArgs adds raw docker run arguments.
-	RemoveOnStop bool              // RemoveOnStop enables AutoRemove on the container.
-	Detach       bool              // Detach controls whether StartDevcontainer waits.
-	TTY          bool              // TTY controls pseudo-TTY allocation.
-	Labels       map[string]string // Labels adds Docker labels.
-	Resources    ResourceLimits    // Resources configures CPU and memory limits.
-	Network      string            // Network overrides the network mode.
-	Timeout      time.Duration     // Timeout limits the overall start duration.
-	Workdir      string            // Workdir overrides the container working directory.
+	ConfigPath   string                // ConfigPath overrides the devcontainer.json path.
+	Config       *DevcontainerConfig   // Config overrides devcontainer.json loading when set.
+	MergeConfigs []*DevcontainerConfig // MergeConfigs are merged onto the base config in order.
+	Env          map[string]string     // Env holds extra environment variables.
+	ExtraPublish []string              // ExtraPublish adds port publish entries.
+	ExtraMounts  []Mount               // ExtraMounts adds extra mount entries.
+	RunArgs      []string              // RunArgs adds raw docker run arguments.
+	RemoveOnStop bool                  // RemoveOnStop enables AutoRemove on the container.
+	Detach       bool                  // Detach controls whether StartDevcontainer waits.
+	TTY          bool                  // TTY controls pseudo-TTY allocation.
+	Labels       map[string]string     // Labels adds Docker labels.
+	Resources    ResourceLimits        // Resources configures CPU and memory limits.
+	Network      string                // Network overrides the network mode.
+	Timeout      time.Duration         // Timeout limits the overall start duration.
+	Workdir      string                // Workdir overrides the container working directory.
 }
 
 // Mount describes an extra container mount to apply at start.
@@ -53,6 +55,37 @@ func defaultStartOptions() startOptions {
 func WithConfigPath(path string) StartOption {
 	return func(o *startOptions) {
 		o.ConfigPath = path
+	}
+}
+
+// WithConfig sets the devcontainer config struct used by StartDevcontainer.
+// Impact: The provided config is used instead of loading devcontainer.json.
+// Example:
+//
+//	cfg := &devcontainer.DevcontainerConfig{Name: "example"}
+//	id, err := devcontainer.StartDevcontainer(ctx, devcontainer.WithConfig(cfg))
+//
+// Similar: WithConfigPath changes the file path, while WithConfig bypasses file loading.
+func WithConfig(cfg *DevcontainerConfig) StartOption {
+	return func(o *startOptions) {
+		o.Config = cfg
+	}
+}
+
+// WithMergeConfig adds a config overlay merged onto the base config.
+// Impact: Later overlays override earlier values for scalar fields and append to slices.
+// Example:
+//
+//	overlay := &devcontainer.DevcontainerConfig{RunArgs: []string{"--privileged"}}
+//	id, err := devcontainer.StartDevcontainer(ctx, devcontainer.WithMergeConfig(overlay))
+//
+// Similar: WithConfig sets the base config, while WithMergeConfig layers changes on top.
+func WithMergeConfig(cfg *DevcontainerConfig) StartOption {
+	return func(o *startOptions) {
+		if cfg == nil {
+			return
+		}
+		o.MergeConfigs = append(o.MergeConfigs, cfg)
 	}
 }
 

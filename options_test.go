@@ -8,7 +8,12 @@ import (
 func TestStartOptionHelpers(t *testing.T) {
 	options := defaultStartOptions()
 
+	config := &DevcontainerConfig{Name: "base"}
+	mergeConfig := &DevcontainerConfig{Name: "overlay"}
+
 	WithConfigPath("devcontainer.json")(&options)
+	WithConfig(config)(&options)
+	WithMergeConfig(mergeConfig)(&options)
 	WithEnv("FOO", "bar")(&options)
 	WithExtraPublish("3000:3000")(&options)
 	WithExtraMount(Mount{Source: "/tmp", Target: "/work", Type: "bind"})(&options)
@@ -26,6 +31,12 @@ func TestStartOptionHelpers(t *testing.T) {
 
 	if options.ConfigPath != "devcontainer.json" {
 		t.Fatalf("unexpected config path: %s", options.ConfigPath)
+	}
+	if options.Config != config {
+		t.Fatalf("unexpected config: %#v", options.Config)
+	}
+	if len(options.MergeConfigs) != 1 || options.MergeConfigs[0] != mergeConfig {
+		t.Fatalf("unexpected merge configs: %#v", options.MergeConfigs)
 	}
 	if options.Env["FOO"] != "bar" {
 		t.Fatalf("unexpected env: %#v", options.Env)
